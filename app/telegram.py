@@ -30,26 +30,65 @@ def send_msg(text, reply_markup=None):
         print("❌ 发送异常:", e)
 
 # =========================
-# 生成按钮
+# 生成内联按钮
 # =========================
 def generate_inline_buttons():
     # 创建内联按钮
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "添加目标", "callback_data": "add_target"},
-                {"text": "查看订阅", "callback_data": "show_subscriptions"},
+                {"text": "🔄 刷新目标", "callback_data": "show_subscriptions"},
+                {"text": "➕ 添加目标", "callback_data": "add_target"},
             ],
             [
-                {"text": "设置推送时间", "callback_data": "set_time"},
-                {"text": "清空所有目标", "callback_data": "clear_all"},
+                {"text": "⏰ 设置推送时间", "callback_data": "set_time"},
+                {"text": "🧹 清空所有目标", "callback_data": "clear_all"},
             ]
         ]
     }
     return keyboard
 
 # =========================
-# 格式化并发送目标列表
+# 格式化目标消息
+# =========================
+def format_target_message(targets):
+    formatted_message = "📅 <b>当前倒计时目标列表</b>:\n\n"
+
+    for name, target_time in targets.items():
+        remaining = calculate_time_remaining(target_time)
+
+        if remaining == "已结束":
+            formatted_message += f"<i>{name}: 已结束</i>\n"
+        elif "紧急" in remaining:
+            formatted_message += f"<b>{name}: {remaining}</b>\n"
+        elif "今天" in remaining:
+            formatted_message += f"<b>{name}: {remaining}</b>\n"
+        else:
+            formatted_message += f"{name}: {remaining}\n"
+
+    return formatted_message
+
+# =========================
+# 计算剩余时间
+# =========================
+def calculate_time_remaining(target_time):
+    now = datetime.now()
+    now_date = datetime(now.year, now.month, now.day)
+    target_date = datetime(target_time.year, target_time.month, target_time.day)
+
+    days = (target_date - now_date).days
+
+    if days < 0:
+        return "已结束"
+    elif days == 0:
+        return "<b>今天</b>"
+    elif 1 <= days <= 9:
+        return f"<b>{days}天 (紧急)</b>"
+    else:
+        return f"{days}天"
+
+# =========================
+# 展示目标列表
 # =========================
 def show_targets():
     # 获取目标列表
@@ -59,8 +98,7 @@ def show_targets():
         return
 
     # 格式化目标列表
-    formatted_message = "📅 <b>当前倒计时目标列表</b>:\n\n"
-    formatted_message += format_msg(targets)  # 格式化目标信息
+    formatted_message = format_target_message(targets)
 
     # 发送消息，并附带按钮
     send_msg(formatted_message, generate_inline_buttons())
