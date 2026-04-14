@@ -24,4 +24,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: tslcat/your-image-name:latest
+          tags: tslcat/subscription-manager-bot:latest
