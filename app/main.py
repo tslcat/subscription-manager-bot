@@ -1,6 +1,12 @@
 import os
+import sys
 import time
 import threading
+
+# 确保 Python 能够找到 app 模块
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'app')))
+
+# 导入 app 模块中的相关函数
 from app.db import init_db
 from app.scheduler import push_loop
 from app.telegram import send_msg
