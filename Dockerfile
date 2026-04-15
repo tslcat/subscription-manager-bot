@@ -13,5 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
 
-# 启动应用
-CMD ["python", "app/main.py"]
+# ★★★ 关键修改：使用 python -m 方式启动（支持相对导入）★★★
+CMD ["python", "-m", "app.main"]
