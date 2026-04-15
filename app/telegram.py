@@ -9,7 +9,6 @@ BOT_TOKEN = os.getenv('TG_BOT_TOKEN')
 TG_USER_ID = os.getenv('TG_USER_ID')
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
-# 全局 offset，防止重复处理同一消息
 last_offset = 0
 
 # =========================
@@ -53,7 +52,7 @@ def generate_inline_buttons():
     return keyboard
 
 # =========================
-# 格式化目标消息（保持不变）
+# 格式化目标消息
 # =========================
 def format_target_message(targets):
     formatted_message = "📅 <b>当前倒计时目标列表</b>:\n\n"
@@ -95,14 +94,14 @@ def show_targets():
     send_msg(formatted_message, generate_inline_buttons())
 
 # =========================
-# 显示所有功能
+# 显示所有功能（已修复 &lt; &gt;）
 # =========================
 def show_all_functions():
     help_text = """📋 <b>机器人所有功能</b>
 
 🔄 刷新目标 → 显示当前所有倒计时
-➕ 添加目标 → /addsub <名称> <日期>
-✏️ 修改目标 → /editsub <名称> <新日期>
+➕ 添加目标 → /addsub &lt;名称&gt; &lt;日期&gt;
+✏️ 修改目标 → /editsub &lt;名称&gt; &lt;新日期&gt;
 ⏰ 设置推送时间 → 默认每天 08:00
 
 输入 <b>/列出所有</b> 查看此菜单"""
@@ -113,29 +112,28 @@ def show_all_functions():
 # =========================
 def handle_callback_query(update):
     callback_data = update["callback_query"]["data"]
-    # 立即回复 callback，防止按钮一直转圈
     requests.post(f"{BASE_URL}answerCallbackQuery", data={
         "callback_query_id": update["callback_query"]["id"]
     })
     
     if callback_data == "add_target":
-        send_msg("请输入：/addsub <目标名称> <目标日期>")
+        send_msg("请输入：/addsub &lt;目标名称&gt; &lt;目标日期&gt;")
     elif callback_data == "show_subscriptions":
         show_targets()
     elif callback_data == "set_time":
         send_msg("请输入新的推送时间，格式：HH:MM (例如 08:30)")
     elif callback_data == "edit_target":
-        send_msg("✏️ 请输入：/editsub <目标名称> <新日期>")
+        send_msg("✏️ 请输入：/editsub &lt;目标名称&gt; &lt;新日期&gt;")
 
 # =========================
-# 处理用户消息
+# 处理用户消息（已修复所有 &lt; &gt;）
 # =========================
 def handle_message(update):
     text = update["message"]["text"].strip()
     if text.startswith("/addsub"):
         parts = text.split()
         if len(parts) != 3:
-            send_msg("❌ 格式错误！正确格式：/addsub <名称> <日期>")
+            send_msg("❌ 格式错误！正确格式：/addsub &lt;名称&gt; &lt;日期&gt;")
         else:
             from .db import add_target
             response = add_target(parts[1], parts[2])
@@ -143,7 +141,7 @@ def handle_message(update):
     elif text.startswith("/editsub"):
         parts = text.split()
         if len(parts) != 3:
-            send_msg("❌ 格式错误！正确格式：/editsub <名称> <新日期>")
+            send_msg("❌ 格式错误！正确格式：/editsub &lt;名称&gt; &lt;新日期&gt;")
         else:
             from .db import add_target
             response = add_target(parts[1], parts[2])
@@ -152,7 +150,7 @@ def handle_message(update):
         show_all_functions() if text == "/列出所有" else show_targets()
 
 # =========================
-# 获取并解析更新（关键修复：正确维护 offset）
+# 获取并解析更新
 # =========================
 def poll_updates():
     global last_offset
@@ -162,15 +160,12 @@ def poll_updates():
         "offset": last_offset,
         "allowed_updates": ["message", "callback_query"]
     }
-    
     try:
         response = requests.get(url, params=params, timeout=110)
         if response.status_code == 200:
             data = response.json()
             for update in data.get("result", []):
-                # 更新 offset，防止重复处理
                 last_offset = update["update_id"] + 1
-                
                 if "callback_query" in update:
                     handle_callback_query(update)
                 elif "message" in update:
@@ -187,7 +182,7 @@ def start_bot():
     while True:
         try:
             poll_updates()
-            time.sleep(0.3)   # 降低 CPU 占用
+            time.sleep(0.3)
         except Exception as e:
             print(f"Bot 异常: {e}")
             time.sleep(5)
