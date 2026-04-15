@@ -1,7 +1,7 @@
 import requests
 from datetime import datetime
-from app.db import load_targets
-from app.utils import format_msg
+from .db import load_targets          # ← 改为相对导入，更稳定
+from .utils import format_msg
 import os
 
 # Telegram 配置
@@ -111,7 +111,7 @@ def show_all_functions():
    → /addsub <目标名称> <目标日期>
 
 ✏️ <b>修改目标</b>
-   → /editsub <目标名称> <新日期>（已实现）
+   → /editsub <目标名称> <新日期>
 
 ⏰ <b>设置推送时间</b>
    → 设置每日报告推送时间（默认 08:00）
@@ -139,7 +139,7 @@ def handle_callback_query(update):
         send_msg("✏️ 请告诉我需要修改的目标\n格式：/editsub <目标名称> <新日期>")
 
 # =========================
-# 处理用户消息（新增 /editsub 支持）
+# 处理用户消息
 # =========================
 def handle_message(update):
     text = update["message"]["text"].strip()
@@ -150,17 +150,17 @@ def handle_message(update):
             send_msg("❌ 请按照正确格式输入：/addsub <目标名称> <目标日期>")
         else:
             name, date_str = parts[1], parts[2]
-            from app.db import add_target
+            from .db import add_target          # ← 改为相对导入
             response = add_target(name, date_str)
             send_msg("✅ 添加/更新成功" if response else "❌ 添加失败")
 
-    elif text.startswith("/editsub"):          # ← 新增
+    elif text.startswith("/editsub"):
         parts = text.split()
         if len(parts) != 3:
             send_msg("❌ 格式错误！\n请使用：/editsub <目标名称> <新日期>")
         else:
             name, date_str = parts[1], parts[2]
-            from app.db import add_target
+            from .db import add_target
             response = add_target(name, date_str)
             if response:
                 send_msg(f"✅ 已成功修改目标「{name}」\n新日期：{date_str}")
@@ -191,3 +191,16 @@ def poll_updates():
                     handle_message(update)
     except Exception as e:
         print("❌ 拉取更新失败:", e)
+
+# =========================
+# 启动 Telegram Bot（新增）
+# =========================
+def start_bot():
+    print("🤖 Telegram Bot 开始运行（长轮询模式）...")
+    while True:
+        try:
+            poll_updates()
+            time.sleep(0.5)   # 避免 CPU 过高
+        except Exception as e:
+            print(f"Bot 轮询异常: {e}")
+            time.sleep(5)
