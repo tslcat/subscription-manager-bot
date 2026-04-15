@@ -1,6 +1,6 @@
 # 📅 Telegram 倒计时目标推送机器人
 
-一个轻量、实用的个人 Telegram 机器人，帮助你管理重要目标和事件倒计时，每天自动推送剩余天数报告。
+**让你不会错过每次续费的信息**，一个轻量、实用的个人 Telegram 机器人，帮助你管理重要目标和事件倒计时，每天自动推送剩余天数报告。
 
 ---
 
@@ -26,7 +26,7 @@
 ---
 
 ### Docker安装
-
+```
 docker run -d \
   --name subscription-manager-bot \
   --restart unless-stopped \
@@ -34,7 +34,7 @@ docker run -d \
   -e TG_BOT_TOKEN=**替换你的Telegram Bot Token** \
   -e TG_USER_ID=**替换你的Telegram ID**\
   tslcat/subscription-manager-bot:latestID
-
+```
 ### Docker-Compose.yml安装
 
 cat > docker-compose.yml << EOF
