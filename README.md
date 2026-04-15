@@ -4,6 +4,8 @@
 
 ---
 
+![截图内容](https://cdn.nodeimage.com/i/QoRqqHvdReLOnCtzA5r8NQHGOYVd9YDv.webp)
+
 ## ✨ 功能特点
 
 - ✅ **添加目标**：支持任意名称 + 目标日期（格式：`YYYY-MM-DD`）
