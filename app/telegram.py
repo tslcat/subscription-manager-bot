@@ -1,157 +1,176 @@
 import requests
 from datetime import datetime
-from app.db import load_targets
-from app.utils import format_msg
-import os
+from .db import load_targets, add_target, delete_target, clear_all_targets, set_push_time
+from .utils import get_formatted_targets
+from .config import BASE_URL, TG_USER_ID
+import time
 
-# Telegram 配置
-BOT_TOKEN = os.getenv('TG_BOT_TOKEN')
-TG_USER_ID = os.getenv('TG_USER_ID')
+last_update_id = 0
 
-BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
-# =========================
-# 发送 Telegram 消息
-# =========================
-def send_msg(text, reply_markup=None):
+def send_msg(text: str, reply_markup=None):
     url = f"{BASE_URL}sendMessage"
     payload = {
         "chat_id": TG_USER_ID,
         "text": text,
-        "parse_mode": "HTML",  # 使用 HTML 格式
-        "reply_markup": reply_markup  # 添加内联按钮
+        "parse_mode": "HTML",
+        "reply_markup": reply_markup
     }
-
     try:
-        response = requests.post(url, data=payload, timeout=10)
-        if response.status_code != 200:
-            print("❌ 发送失败:", response.text)
+        requests.post(url, json=payload, timeout=10)
     except Exception as e:
-        print("❌ 发送异常:", e)
+        print("❌ 发送消息失败:", e)
 
-# =========================
-# 生成内联按钮
-# =========================
-def generate_inline_buttons():
-    # 创建内联按钮
+
+def generate_main_buttons():
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "🔄 刷新目标", "callback_data": "show_subscriptions"},
+                {"text": "🔄 刷新", "callback_data": "show_subscriptions"},
                 {"text": "➕ 添加目标", "callback_data": "add_target"},
             ],
             [
+                {"text": "🗑 删除目标", "callback_data": "delete_target"},
+                {"text": "🧹 清空所有", "callback_data": "clear_all"},
+            ],
+            [
                 {"text": "⏰ 设置推送时间", "callback_data": "set_time"},
-                {"text": "🧹 清空所有目标", "callback_data": "clear_all"},
             ]
         ]
     }
     return keyboard
 
-# =========================
-# 格式化目标消息
-# =========================
-def format_target_message(targets):
-    formatted_message = "📅 <b>当前倒计时目标列表</b>:\n\n"
 
-    for name, target_time in targets.items():
-        remaining = calculate_time_remaining(target_time)
+def generate_delete_keyboard(targets):
+    keyboard = {"inline_keyboard": []}
+    for name in targets.keys():
+        keyboard["inline_keyboard"].append([
+            {"text": f"📌 {name}", "callback_data": f"view:{name}"},
+            {"text": "🗑 删除", "callback_data": f"del:{name}"}
+        ])
+    keyboard["inline_keyboard"].append([
+        {"text": "🔙 返回主菜单", "callback_data": "show_subscriptions"}
+    ])
+    return keyboard
 
-        if remaining == "已结束":
-            formatted_message += f"<i>{name}: 已结束</i>\n"
-        elif "紧急" in remaining:
-            formatted_message += f"<b>{name}: {remaining}</b>\n"
-        elif "今天" in remaining:
-            formatted_message += f"<b>{name}: {remaining}</b>\n"
-        else:
-            formatted_message += f"{name}: {remaining}\n"
 
-    return formatted_message
+def generate_clear_confirm_keyboard():
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ 确认清空", "callback_data": "clear_confirm"},
+                {"text": "❌ 取消", "callback_data": "show_subscriptions"},
+            ]
+        ]
+    }
+    return keyboard
 
-# =========================
-# 计算剩余时间
-# =========================
-def calculate_time_remaining(target_time):
-    now = datetime.now()
-    now_date = datetime(now.year, now.month, now.day)
-    target_date = datetime(target_time.year, target_time.month, target_time.day)
 
-    days = (target_date - now_date).days
-
-    if days < 0:
-        return "已结束"
-    elif days == 0:
-        return "<b>今天</b>"
-    elif 1 <= days <= 9:
-        return f"<b>{days}天 (紧急)</b>"
-    else:
-        return f"{days}天"
-
-# =========================
-# 展示目标列表
-# =========================
-def show_targets():
-    # 获取目标列表
+def show_targets(delete_mode=False):
     targets = load_targets()
     if not targets:
-        send_msg("📅 当前没有任何目标", generate_inline_buttons())
+        send_msg("📅 当前没有任何目标", generate_main_buttons())
         return
 
-    # 格式化目标列表
-    formatted_message = format_target_message(targets)
+    if delete_mode:
+        msg = "🗑 <b>请选择要删除的目标</b>：\n\n" + get_formatted_targets(targets)
+        send_msg(msg, generate_delete_keyboard(targets))
+    else:
+        msg = get_formatted_targets(targets)
+        send_msg(msg, generate_main_buttons())
 
-    # 发送消息，并附带按钮
-    send_msg(formatted_message, generate_inline_buttons())
 
-# =========================
-# 处理按钮点击
-# =========================
 def handle_callback_query(update):
     query = update["callback_query"]
-    callback_data = query["data"]
+    data = query["data"]
 
-    if callback_data == "add_target":
-        send_msg("请输入目标名称和日期，格式：/addsub <目标名称> <目标日期>")
-    elif callback_data == "show_subscriptions":
+    if data == "show_subscriptions":
         show_targets()
-    elif callback_data == "set_time":
-        send_msg("请输入新的推送时间，格式：HH:MM (例如：09:00)")
-    elif callback_data == "clear_all":
-        send_msg("确认要清空所有目标吗？")
-        # 这里可以添加清空数据库目标的逻辑
-
-# =========================
-# 处理用户消息
-# =========================
-def handle_message(update):
-    text = update["message"]["text"]
-    if text.startswith("/addsub"):
-        parts = text.split()
-        if len(parts) != 3:
-            send_msg("❌ 请按照正确格式输入：/addsub <目标名称> <目标日期>")
+    elif data == "add_target":
+        send_msg("请发送：/addsub 目标名称 日期\n例如：/addsub 考试 2026-06-15")
+    elif data == "delete_target":
+        show_targets(delete_mode=True)
+    elif data.startswith("del:"):
+        name = data[4:]
+        if delete_target(name):
+            send_msg(f"✅ 已删除目标：{name}", generate_main_buttons())
         else:
-            name, date_str = parts[1], parts[2]
-            # 添加目标到数据库
-            response = add_target(name, date_str)
-            send_msg(response)
+            send_msg(f"❌ 删除失败：未找到目标 {name}")
+    elif data == "clear_all":
+        send_msg("⚠️ <b>确定要清空所有目标吗？</b>\n此操作不可恢复！", generate_clear_confirm_keyboard())
+    elif data == "clear_confirm":
+        if clear_all_targets():
+            send_msg("✅ 已清空所有目标", generate_main_buttons())
+        else:
+            send_msg("❌ 清空失败")
+    elif data == "set_time":
+        send_msg("请发送新的推送时间（24小时制）\n例如：/settime 08:30")
+
+
+def handle_message(update):
+    text = update["message"]["text"].strip()
+
+    if text.startswith("/addsub"):
+        parts = text.split(maxsplit=2)
+        if len(parts) < 3:
+            send_msg("❌ 格式错误！正确示例：/addsub 考试 2026-06-15")
+            return
+        name = parts[1]
+        date_str = parts[2]
+        if add_target(name, date_str):
+            send_msg(f"✅ 已添加目标：{name} → {date_str}", generate_main_buttons())
+        else:
+            send_msg("❌ 日期格式无效，请使用 YYYY-MM-DD 等格式")
+
+    elif text.startswith(("/delsub", "/del")):
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            send_msg("❌ 格式错误！正确示例：/delsub 考试")
+            return
+        name = parts[1].strip()
+        if delete_target(name):
+            send_msg(f"✅ 已删除目标：{name}", generate_main_buttons())
+        else:
+            send_msg(f"❌ 未找到目标：{name}")
+
     elif text.startswith("/subs"):
         show_targets()
 
-# =========================
-# 获取并解析更新
-# =========================
-def poll_updates():
-    url = f"{BASE_URL}getUpdates"
-    params = {"timeout": 100, "offset": -1}
+    elif text.startswith("/settime"):
+        try:
+            time_str = text.split()[1]
+            datetime.strptime(time_str, "%H:%M")
+            set_push_time(time_str)
+            send_msg(f"✅ 推送时间已设置为 {time_str}", generate_main_buttons())
+        except:
+            send_msg("❌ 格式错误！请使用 HH:MM（如 09:00）")
 
-    try:
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            data = response.json()
-            for update in data["result"]:
+
+def poll_updates():
+    global last_update_id
+    url = f"{BASE_URL}getUpdates"
+
+    while True:
+        try:
+            params = {"timeout": 60, "offset": last_update_id + 1}
+            resp = requests.get(url, params=params, timeout=70)
+            if resp.status_code != 200:
+                time.sleep(5)
+                continue
+
+            data = resp.json()
+            for update in data.get("result", []):
+                last_update_id = update["update_id"]
+
                 if "callback_query" in update:
                     handle_callback_query(update)
                 elif "message" in update:
                     handle_message(update)
-    except Exception as e:
-        print("❌ 拉取更新失败:", e)
+        except Exception as e:
+            print("polling error:", e)
+            time.sleep(5)
+
+
+def start_bot():
+    print("🤖 Telegram Bot 轮询已启动（支持删除单个目标）")
+    poll_updates()

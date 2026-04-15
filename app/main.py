@@ -2,30 +2,28 @@ import os
 import sys
 import time
 import threading
+from .db import init_db
+from .scheduler import push_loop
+from .telegram import start_bot
 
-# 确保 Python 能够找到 app 模块
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'app')))
-
-# 导入 app 模块中的相关函数
-from app.db import init_db
-from app.scheduler import push_loop
-from app.telegram import send_msg
-
-# 初始化数据库
 def initialize():
     init_db()
-    print("✅ 数据库已初始化")
+    print("✅ 数据库初始化完成")
 
-# 启动定时任务
 def start_scheduler():
-    thread = threading.Thread(target=push_loop)
-    thread.daemon = True
+    thread = threading.Thread(target=push_loop, daemon=True)
     thread.start()
-    print("✅ 定时任务已启动")
+    print("✅ 定时推送任务已启动")
+
+def start_telegram_bot():
+    thread = threading.Thread(target=start_bot, daemon=True)
+    thread.start()
+    print("✅ Telegram Bot 已启动（支持按钮交互）")
 
 if __name__ == "__main__":
     initialize()
     start_scheduler()
+    start_telegram_bot()
 
     # 保持主程序运行
     try:
