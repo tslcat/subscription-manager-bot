@@ -54,6 +54,8 @@ services:
       - TZ=\${TZ}
 EOF
 ```
+启动后修改.env文件信息
+
 ### 常用命令
 ```
 docker compose logs -f          # 查看实时日志（按 Ctrl+C 退出）
