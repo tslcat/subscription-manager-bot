@@ -2,7 +2,6 @@ import sqlite3
 import os
 from datetime import datetime
 
-# 使用和 config.py 一致的路径，并确保目录存在
 DB_PATH = "/data/subscriptions.db"
 
 # =========================
@@ -26,12 +25,10 @@ def normalize_date(date_str):
     return None
 
 # =========================
-# 初始化数据库（已修复路径问题）
+# 初始化数据库
 # =========================
 def init_db():
-    # 确保 /data 目录存在
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -51,7 +48,7 @@ def init_db():
     print(f"✅ 数据库已初始化 → {DB_PATH}")
 
 # =========================
-# 添加或更新目标（支持修改）
+# 添加或更新目标（支持 /addsub 和 /editsub）
 # =========================
 def add_target(name, date_str):
     date_str = normalize_date(date_str)
@@ -60,7 +57,6 @@ def add_target(name, date_str):
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-
     try:
         cursor.execute(
             "INSERT OR REPLACE INTO targets (name, target_date) VALUES (?, ?)",

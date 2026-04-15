@@ -3,20 +3,17 @@ import threading
 
 from .db import init_db
 from .scheduler import push_loop
-from .telegram import start_bot   # ← 关键：现在可以正常导入
+from .telegram import start_bot
 
-# 初始化数据库
 def initialize():
     init_db()
     print("✅ 数据库已初始化")
 
-# 启动定时推送任务
 def start_scheduler():
     thread = threading.Thread(target=push_loop, daemon=True)
     thread.start()
     print("✅ 定时推送任务已启动")
 
-# 启动 Telegram Bot（长轮询）
 def start_telegram_bot():
     thread = threading.Thread(target=start_bot, daemon=True)
     thread.start()
@@ -27,7 +24,6 @@ if __name__ == "__main__":
     start_scheduler()
     start_telegram_bot()
 
-    # 保持主程序运行
     try:
         while True:
             time.sleep(1)
