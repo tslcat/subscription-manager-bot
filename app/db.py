@@ -1,17 +1,18 @@
 import sqlite3
+import os
 from datetime import datetime
 
-DB_PATH = "/path/to/your/database.db"
+# 使用和 config.py 一致的路径，并确保目录存在
+DB_PATH = "/data/subscriptions.db"
 
 # =========================
-# 日期格式标准化（新增）
+# 日期格式标准化
 # =========================
 def normalize_date(date_str):
     if not date_str:
         return None
     date_str = date_str.strip().replace('/', '-').replace('年', '-').replace('月', '-').replace('日', '').replace(' ', '')
 
-    # 支持多种常见格式
     formats = [
         "%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%m-%d-%Y",
         "%Y年%m月%d日", "%Y%m%d"
@@ -22,12 +23,15 @@ def normalize_date(date_str):
             return dt.strftime("%Y-%m-%d")
         except:
             pass
-    return None  # 格式不正确返回 None
+    return None
 
 # =========================
-# 初始化数据库
+# 初始化数据库（已修复路径问题）
 # =========================
 def init_db():
+    # 确保 /data 目录存在
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -44,9 +48,10 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+    print(f"✅ 数据库已初始化 → {DB_PATH}")
 
 # =========================
-# 添加或更新目标（现在支持修改）
+# 添加或更新目标（支持修改）
 # =========================
 def add_target(name, date_str):
     date_str = normalize_date(date_str)
@@ -63,7 +68,8 @@ def add_target(name, date_str):
         )
         conn.commit()
         return True
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        print("数据库错误:", e)
         return False
     finally:
         conn.close()
@@ -84,8 +90,7 @@ def load_targets():
             target_date = datetime.strptime(date_str, "%Y-%m-%d")
             targets[name] = target_date
         except:
-            pass  # 忽略错误
-
+            pass
     return targets
 
 # =========================
