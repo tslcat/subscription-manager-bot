@@ -55,18 +55,18 @@ services:
 EOF
 ```
 ### 常用命令
-
+```
 docker compose logs -f          # 查看实时日志（按 Ctrl+C 退出）
 docker compose restart          # 重启机器人
 docker compose down             # 停止并删除容器
 docker compose up -d --build    # 更新代码后重新构建启动
 docker logs countdown-bot       # 查看最后一次日志
-
+```
 ### 使用方法
-
+```
 添加目标
 /addsub <目标名称> <目标日期>
 示例：/addsub 考研 2026-12-20
 查看所有目标
 /subs
-
+```
