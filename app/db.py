@@ -1,34 +1,11 @@
 import sqlite3
-import os
 from datetime import datetime
-
-DB_PATH = "/data/subscriptions.db"
-
-# =========================
-# 日期格式标准化
-# =========================
-def normalize_date(date_str):
-    if not date_str:
-        return None
-    date_str = date_str.strip().replace('/', '-').replace('年', '-').replace('月', '-').replace('日', '').replace(' ', '')
-
-    formats = [
-        "%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%m-%d-%Y",
-        "%Y年%m月%d日", "%Y%m%d"
-    ]
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(date_str, fmt)
-            return dt.strftime("%Y-%m-%d")
-        except:
-            pass
-    return None
+from .config import DB_PATH
 
 # =========================
 # 初始化数据库
 # =========================
 def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -45,10 +22,9 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    print(f"✅ 数据库已初始化 → {DB_PATH}")
 
 # =========================
-# 添加或更新目标（支持 /addsub 和 /editsub）
+# 添加或更新目标
 # =========================
 def add_target(name, date_str):
     date_str = normalize_date(date_str)
@@ -64,8 +40,7 @@ def add_target(name, date_str):
         )
         conn.commit()
         return True
-    except sqlite3.Error as e:
-        print("数据库错误:", e)
+    except sqlite3.Error:
         return False
     finally:
         conn.close()
@@ -103,7 +78,7 @@ def set_push_time(time_str):
     conn.close()
 
 # =========================
-# 获取推送时间（默认北京时间 08:00）
+# 获取推送时间（默认 09:00）
 # =========================
 def get_push_time():
     conn = sqlite3.connect(DB_PATH)
@@ -111,4 +86,17 @@ def get_push_time():
     cursor.execute("SELECT value FROM settings WHERE key = 'push_time'")
     row = cursor.fetchone()
     conn.close()
-    return row[0] if row else "08:00"
+    return row[0] if row else "09:00"
+
+# =========================
+# 日期规范化
+# =========================
+def normalize_date(date_str):
+    try:
+        cleaned = date_str.replace('/', '-').replace(' ', '')
+        if len(cleaned) == 8 and cleaned.isdigit():
+            cleaned = f"{cleaned[:4]}-{cleaned[4:6]}-{cleaned[6:]}"
+        dt = datetime.strptime(cleaned, "%Y-%m-%d")
+        return dt.strftime("%Y-%m-%d")
+    except:
+        return None
