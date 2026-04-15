@@ -12,6 +12,18 @@ BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 last_offset = 0
 
 # =========================
+# 辅助函数：验证 HH:MM 格式
+# =========================
+def is_valid_push_time(time_str):
+    try:
+        if ':' not in time_str:
+            return False
+        h, m = map(int, time_str.split(':'))
+        return 0 <= h < 24 and 0 <= m < 60
+    except:
+        return False
+
+# =========================
 # 发送 Telegram 消息
 # =========================
 def send_msg(text, reply_markup=None):
@@ -82,9 +94,6 @@ def calculate_time_remaining(target_time):
     else:
         return f"{days}天"
 
-# =========================
-# 展示目标列表
-# =========================
 def show_targets():
     targets = load_targets()
     if not targets:
@@ -93,9 +102,6 @@ def show_targets():
     formatted_message = format_target_message(targets)
     send_msg(formatted_message, generate_inline_buttons())
 
-# =========================
-# 显示所有功能（已修复 &lt; &gt;）
-# =========================
 def show_all_functions():
     help_text = """📋 <b>机器人所有功能</b>
 
@@ -126,10 +132,11 @@ def handle_callback_query(update):
         send_msg("✏️ 请输入：/editsub &lt;目标名称&gt; &lt;新日期&gt;")
 
 # =========================
-# 处理用户消息（已修复所有 &lt; &gt;）
+# 处理用户消息（已新增推送时间保存逻辑）
 # =========================
 def handle_message(update):
     text = update["message"]["text"].strip()
+
     if text.startswith("/addsub"):
         parts = text.split()
         if len(parts) != 3:
@@ -138,6 +145,7 @@ def handle_message(update):
             from .db import add_target
             response = add_target(parts[1], parts[2])
             send_msg("✅ 添加/更新成功" if response else "❌ 添加失败", generate_inline_buttons())
+
     elif text.startswith("/editsub"):
         parts = text.split()
         if len(parts) != 3:
@@ -146,6 +154,13 @@ def handle_message(update):
             from .db import add_target
             response = add_target(parts[1], parts[2])
             send_msg(f"✅ 已修改「{parts[1]}」" if response else "❌ 修改失败", generate_inline_buttons())
+
+    # 新增：处理用户输入的推送时间（HH:MM）
+    elif is_valid_push_time(text):
+        from .db import set_push_time
+        set_push_time(text)
+        send_msg(f"✅ 推送时间已设置为 <b>{text}</b>\n每日报告将在此时间自动发送！", generate_inline_buttons())
+
     elif text.startswith("/subs") or text == "/列出所有":
         show_all_functions() if text == "/列出所有" else show_targets()
 
