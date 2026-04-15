@@ -1,17 +1,19 @@
 import requests
 import time
-import json                          # ← 新增：修复按钮 JSON 错误
+import json
 from datetime import datetime
 from .db import load_targets
-from .utils import format_msg
 import os
 
 BOT_TOKEN = os.getenv('TG_BOT_TOKEN')
 TG_USER_ID = os.getenv('TG_USER_ID')
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
+# 全局 offset，防止重复处理同一消息
+last_offset = 0
+
 # =========================
-# 发送 Telegram 消息（已修复 reply_markup）
+# 发送 Telegram 消息
 # =========================
 def send_msg(text, reply_markup=None):
     url = f"{BASE_URL}sendMessage"
@@ -20,8 +22,6 @@ def send_msg(text, reply_markup=None):
         "text": text,
         "parse_mode": "HTML",
     }
-    
-    # 关键修复：把按钮转成 JSON 字符串
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
     
@@ -53,7 +53,7 @@ def generate_inline_buttons():
     return keyboard
 
 # =========================
-# 格式化目标消息
+# 格式化目标消息（保持不变）
 # =========================
 def format_target_message(targets):
     formatted_message = "📅 <b>当前倒计时目标列表</b>:\n\n"
@@ -69,9 +69,6 @@ def format_target_message(targets):
             formatted_message += f"{name}: {remaining}\n"
     return formatted_message
 
-# =========================
-# 计算剩余时间
-# =========================
 def calculate_time_remaining(target_time):
     now = datetime.now()
     now_date = datetime(now.year, now.month, now.day)
@@ -98,7 +95,7 @@ def show_targets():
     send_msg(formatted_message, generate_inline_buttons())
 
 # =========================
-# 显示所有功能（/列出所有）
+# 显示所有功能
 # =========================
 def show_all_functions():
     help_text = """📋 <b>机器人所有功能</b>
@@ -116,6 +113,11 @@ def show_all_functions():
 # =========================
 def handle_callback_query(update):
     callback_data = update["callback_query"]["data"]
+    # 立即回复 callback，防止按钮一直转圈
+    requests.post(f"{BASE_URL}answerCallbackQuery", data={
+        "callback_query_id": update["callback_query"]["id"]
+    })
+    
     if callback_data == "add_target":
         send_msg("请输入：/addsub <目标名称> <目标日期>")
     elif callback_data == "show_subscriptions":
@@ -147,21 +149,28 @@ def handle_message(update):
             response = add_target(parts[1], parts[2])
             send_msg(f"✅ 已修改「{parts[1]}」" if response else "❌ 修改失败", generate_inline_buttons())
     elif text.startswith("/subs") or text == "/列出所有":
-        if text == "/列出所有":
-            show_all_functions()
-        else:
-            show_targets()
+        show_all_functions() if text == "/列出所有" else show_targets()
 
 # =========================
-# 获取并解析更新
+# 获取并解析更新（关键修复：正确维护 offset）
 # =========================
 def poll_updates():
+    global last_offset
     url = f"{BASE_URL}getUpdates"
-    params = {"timeout": 100, "offset": -1}
+    params = {
+        "timeout": 100,
+        "offset": last_offset,
+        "allowed_updates": ["message", "callback_query"]
+    }
+    
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=110)
         if response.status_code == 200:
-            for update in response.json().get("result", []):
+            data = response.json()
+            for update in data.get("result", []):
+                # 更新 offset，防止重复处理
+                last_offset = update["update_id"] + 1
+                
                 if "callback_query" in update:
                     handle_callback_query(update)
                 elif "message" in update:
@@ -173,11 +182,12 @@ def poll_updates():
 # 启动 Telegram Bot
 # =========================
 def start_bot():
-    print("🤖 Telegram Bot 开始运行（长轮询模式）...")
+    global last_offset
+    print("🤖 Telegram Bot 已启动（长轮询模式）...")
     while True:
         try:
             poll_updates()
-            time.sleep(0.5)
+            time.sleep(0.3)   # 降低 CPU 占用
         except Exception as e:
             print(f"Bot 异常: {e}")
             time.sleep(5)
