@@ -31,8 +31,8 @@ docker run -d \
   --name subscription-manager-bot \
   --restart unless-stopped \
   -v $(pwd)/data:/data \
-  -e TG_BOT_TOKEN=**替换你的Telegram Bot Token** \
-  -e TG_USER_ID=**替换你的Telegram ID**\
+  -e TG_BOT_TOKEN=替换你的Telegram Bot Token \
+  -e TG_USER_ID=替换你的Telegram ID\
   tslcat/subscription-manager-bot:latestID
 ```
 ### Docker-Compose.yml安装
