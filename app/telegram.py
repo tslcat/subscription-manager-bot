@@ -10,9 +10,9 @@ TG_USER_ID = os.getenv('TG_USER_ID')
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
 last_offset = 0
-pending_action = None         # "renew" 或 "delete"（两步操作用）
+pending_action = None         # "renew" 或 "delete"
 pending_renew_target = None   # 正在等待续费日期的目标名称
-pending_import = False        # 是否正在等待导入 JSON
+pending_import = False
 
 # =========================
 # 辅助函数
@@ -81,13 +81,14 @@ def generate_inline_buttons():
     return keyboard
 
 # =========================
-# 极简序号列表（仅显示天数）
+# 极简序号列表（按日期排序）
 # =========================
 def format_numbered_targets(targets):
     if not targets:
         return "📅 当前没有任何目标"
     
     message = "📅 <b>当前倒计时目标</b>\n\n"
+    # 按到期日期从近到远排序
     sorted_targets = sorted(targets.items(), key=lambda x: x[1])
     
     for i, (name, target_time) in enumerate(sorted_targets, 1):
@@ -152,20 +153,20 @@ def handle_message(update):
     global pending_action, pending_renew_target, pending_import
     text = update["message"]["text"].strip()
 
-    # /start 欢迎
     if text == "/start":
-        welcome = "👋 <b>Telegram 倒计时机器人</b>\n\n界面已极简优化！\n点击「✅ 续费目标」或「🗑️ 删除目标」后输入序号即可操作～"
+        welcome = "👋 <b>Telegram 倒计时机器人</b>\n\n序号已完全对齐！\n点击按钮后输入序号即可操作～"
         send_msg(welcome, generate_inline_buttons())
         return
 
-    # === 两步操作：输入序号 ===
+    # === 两步操作：输入序号（关键修复点）===
     if pending_action and text.isdigit():
         idx = int(text)
         targets = load_targets()
-        sorted_names = sorted(targets.keys())
+        # 【修复】和显示列表使用完全一致的排序方式
+        sorted_targets = sorted(targets.items(), key=lambda x: x[1])
         
-        if 1 <= idx <= len(sorted_names):
-            name = sorted_names[idx-1]
+        if 1 <= idx <= len(sorted_targets):
+            name = sorted_targets[idx-1][0]   # 取名称
             
             if pending_action == "renew":
                 current = targets[name].strftime("%Y-%m-%d")
@@ -182,7 +183,7 @@ def handle_message(update):
                 pending_action = None
                 return
         else:
-            send_msg("❌ 序号超出范围，请重新输入", generate_inline_buttons())
+            send_msg(f"❌ 序号 {idx} 超出范围，请重新输入", generate_inline_buttons())
             return
 
     # === 续费第二步：输入新日期 ===
@@ -277,7 +278,7 @@ def poll_updates():
 
 def start_bot():
     global last_offset
-    print("🤖 Telegram Bot 已启动（两步极简按钮版）...")
+    print("🤖 Telegram Bot 已启动（序号一致性修复版）...")
     while True:
         try:
             poll_updates()
