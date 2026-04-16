@@ -130,11 +130,11 @@ def handle_callback_query(update):
     
     if callback_data == "action_edit":
         user_state["pending_action"] = "edit"
-        send_msg("✏️ 请输入要<b>修改</b>的目标序号（例如：1）", generate_inline_buttons())
+        send_msg("✏️ 请输入要<b>修改</b>的目标序号（例如：1或2...）", generate_inline_buttons())
     
     elif callback_data == "action_archive":
         user_state["pending_action"] = "archive"
-        send_msg("📦 请输入要<b>归档</b>的目标序号（输入 <b>0</b> 显示所有历史归档）", generate_inline_buttons())
+        send_msg("📦 请输入要<b>归档</b>的目标序号（输入 <b>0</b> 显示所有历史归档;输入<b>1、2...</b> 归档目标）", generate_inline_buttons())
     
     elif callback_data == "show_subscriptions":
         show_targets()
