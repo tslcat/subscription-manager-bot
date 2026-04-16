@@ -2,6 +2,7 @@
 
 **让你不会错过每次续费的信息**，一个轻量、实用的个人 Telegram 机器人，帮助你管理重要目标和事件倒计时，每天自动推送剩余天数报告。
 
+特点：管理方便，即加即用，每天固定时间提醒⏰，不落掉每次目标。使用于每天都使用电报的用户。
 ---
 
 ![bot截图1](https://cdn.nodeimage.com/i/3awMOuE0JDHHHJDo3vV1WPiVPXpFAgYL.webp)
