@@ -1,7 +1,7 @@
 import requests
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from .db import load_targets, delete_target, export_targets, import_targets
 import os
 
@@ -10,9 +10,14 @@ TG_USER_ID = os.getenv('TG_USER_ID')
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
 last_offset = 0
-pending_action = None         # "renew" 或 "delete"
-pending_renew_target = None   # 正在等待续费日期的目标名称
-pending_import = False
+
+# ====================== 统一状态管理 ======================
+user_state = {
+    "pending_action": None,          # "renew" 或 "delete"
+    "pending_renew_target": None,
+    "pending_delete_confirm": None,
+    "pending_import": False
+}
 
 # =========================
 # 辅助函数
@@ -49,14 +54,14 @@ def send_msg(text, reply_markup=None):
     try:
         response = requests.post(url, data=payload, timeout=10)
         if response.status_code != 200:
-            print("❌ 发送失败:", response.text)
+            print(f"❌ 发送失败: {response.text}")
         else:
             print("✅ 消息发送成功")
     except Exception as e:
-        print("❌ 发送异常:", e)
+        print(f"❌ 发送异常: {e}")
 
 # =========================
-# 通用固定按钮
+# 通用操作按钮
 # =========================
 def generate_inline_buttons():
     keyboard = {
@@ -81,18 +86,22 @@ def generate_inline_buttons():
     return keyboard
 
 # =========================
-# 极简序号列表（按日期排序）
+# 【关键修复】极简序号列表 —— 只按日期计算天数
 # =========================
 def format_numbered_targets(targets):
     if not targets:
-        return "📅 当前没有任何目标"
+        return "📅 当前没有任何目标\n\n<b>共 0 个目标</b>"
     
     message = "📅 <b>当前倒计时目标</b>\n\n"
     # 按到期日期从近到远排序
     sorted_targets = sorted(targets.items(), key=lambda x: x[1])
     
+    now_date = datetime.now().date()   # ← 只取日期部分（修复提前一天的关键）
+    
     for i, (name, target_time) in enumerate(sorted_targets, 1):
-        days = (target_time - datetime.now()).days
+        target_date = target_time.date()   # ← 只取日期部分
+        days = (target_date - now_date).days
+        
         if days < 0:
             message += f"{i}. {name}: 已结束\n"
         elif days == 0:
@@ -104,33 +113,45 @@ def format_numbered_targets(targets):
     return message
 
 def show_targets():
-    global pending_action, pending_renew_target, pending_import
-    pending_action = None
-    pending_renew_target = None
-    pending_import = False
+    global user_state
+    user_state = {k: None if k != "pending_import" else False for k in user_state}
     
     targets = load_targets()
-    formatted_message = format_numbered_targets(targets)
+    formatted = format_numbered_targets(targets)
     keyboard = generate_inline_buttons()
-    send_msg(formatted_message, keyboard)
+    send_msg(formatted, keyboard)
+
+# =========================
+# 定时推送日报（带按钮）
+# =========================
+def send_daily_report():
+    targets = load_targets()
+    if not targets:
+        send_msg("📅 <b>Daily Subscription Report</b>\n\n当前没有任何目标", generate_inline_buttons())
+        return
+    
+    body = format_numbered_targets(targets).replace("📅 <b>当前倒计时目标</b>\n\n", "")
+    msg = f"📅 <b>Daily Subscription Report</b>\n\n{body}"
+    send_msg(msg, generate_inline_buttons())
+    print("✅ 定时日报已发送（带操作按钮）")
 
 # =========================
 # 处理按钮点击
 # =========================
 def handle_callback_query(update):
-    global pending_action
+    global user_state
     callback_data = update["callback_query"]["data"]
     requests.post(f"{BASE_URL}answerCallbackQuery", data={
         "callback_query_id": update["callback_query"]["id"]
     })
     
     if callback_data == "action_renew":
-        pending_action = "renew"
-        send_msg("✅ 请输入要<b>续费</b>的目标序号（例如：1 或 2）", generate_inline_buttons())
+        user_state["pending_action"] = "renew"
+        send_msg("✅ 请输入要<b>续费</b>的目标序号（例如：1）", generate_inline_buttons())
     
     elif callback_data == "action_delete":
-        pending_action = "delete"
-        send_msg("🗑️ 请输入要<b>删除</b>的目标序号（例如：1 或 2）", generate_inline_buttons())
+        user_state["pending_action"] = "delete"
+        send_msg("🗑️ 请输入要<b>删除</b>的目标序号（例如：1）", generate_inline_buttons())
     
     elif callback_data == "show_subscriptions":
         show_targets()
@@ -143,62 +164,91 @@ def handle_callback_query(update):
         json_str = json.dumps(data, ensure_ascii=False, indent=2)
         send_msg(f"📤 <b>导出成功！</b>\n\n<code>{json_str}</code>\n\n复制保存即可备份。", generate_inline_buttons())
     elif callback_data == "import_data":
-        pending_import = True
+        user_state["pending_import"] = True
         send_msg("📥 请直接粘贴你要导入的 JSON 数据", generate_inline_buttons())
+    elif callback_data.startswith("quick_renew:"):
+        name = callback_data.split(":", 1)[1]
+        from .db import add_target
+        new_date = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
+        if add_target(name, new_date):
+            send_msg(f"✅ 「{name}」已一键 +1年续费！新日期：<b>{new_date}</b>", generate_inline_buttons())
+            show_targets()
+        else:
+            send_msg("❌ 续费失败", generate_inline_buttons())
+        user_state["pending_renew_target"] = None
 
 # =========================
 # 处理用户消息
 # =========================
 def handle_message(update):
-    global pending_action, pending_renew_target, pending_import
+    global user_state
     text = update["message"]["text"].strip()
 
     if text == "/start":
-        welcome = "👋 <b>Telegram 倒计时机器人</b>\n\n序号已完全对齐！\n点击按钮后输入序号即可操作～"
+        welcome = "👋 <b>Telegram 倒计时机器人</b>\n\n倒计时已修复！现在按自然日期计算，再也不会提前一天啦～"
         send_msg(welcome, generate_inline_buttons())
         return
 
-    # === 两步操作：输入序号（关键修复点）===
-    if pending_action and text.isdigit():
+    # ==================== 输入序号 ====================
+    if user_state["pending_action"] and text.isdigit():
         idx = int(text)
         targets = load_targets()
-        # 【修复】和显示列表使用完全一致的排序方式
         sorted_targets = sorted(targets.items(), key=lambda x: x[1])
         
         if 1 <= idx <= len(sorted_targets):
-            name = sorted_targets[idx-1][0]   # 取名称
+            name = sorted_targets[idx-1][0]
             
-            if pending_action == "renew":
+            if user_state["pending_action"] == "renew":
                 current = targets[name].strftime("%Y-%m-%d")
-                pending_renew_target = name
-                pending_action = None
-                send_msg(f"🎉 正在为「{name}」续费\n\n当前到期日期：<b>{current}</b>\n\n📅 请输入新的到期日期（YYYY-MM-DD）：", generate_inline_buttons())
+                user_state["pending_renew_target"] = name
+                user_state["pending_action"] = None
+                
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "📅 +1年（推荐）", "callback_data": f"quick_renew:{name}"}],
+                        [{"text": "✏️ 自定义日期", "callback_data": "custom_date"}]
+                    ]
+                }
+                send_msg(f"🎉 正在为「{name}」续费\n\n当前到期：<b>{current}</b>\n\n请选择：", keyboard)
                 return
-            elif pending_action == "delete":
-                if delete_target(name):
-                    send_msg(f"✅ 已删除 「{name}」", generate_inline_buttons())
-                    show_targets()
-                else:
-                    send_msg("❌ 删除失败", generate_inline_buttons())
-                pending_action = None
+            
+            elif user_state["pending_action"] == "delete":
+                user_state["pending_delete_confirm"] = name
+                user_state["pending_action"] = None
+                send_msg(f"⚠️ 确定删除 <b>「{name}」</b> 吗？\n回复 <b>是</b> / <b>1</b> 确认，其他取消", generate_inline_buttons())
                 return
         else:
-            send_msg(f"❌ 序号 {idx} 超出范围，请重新输入", generate_inline_buttons())
+            send_msg(f"❌ 序号 {idx} 超出范围", generate_inline_buttons())
             return
 
-    # === 续费第二步：输入新日期 ===
-    if pending_renew_target and is_valid_date(text):
-        from .db import add_target
-        if add_target(pending_renew_target, text):
-            send_msg(f"✅ 「{pending_renew_target}」已续费成功！", generate_inline_buttons())
-            show_targets()
+    # ==================== 删除二次确认 ====================
+    if user_state["pending_delete_confirm"]:
+        if text in ["是", "1", "确认", "yes", "确定"]:
+            name = user_state["pending_delete_confirm"]
+            if delete_target(name):
+                send_msg(f"✅ 已删除 「{name}」", generate_inline_buttons())
+                show_targets()
+            else:
+                send_msg("❌ 删除失败", generate_inline_buttons())
         else:
-            send_msg("❌ 日期格式错误，请重试", generate_inline_buttons())
-        pending_renew_target = None
+            send_msg("❌ 已取消删除", generate_inline_buttons())
+        user_state["pending_delete_confirm"] = None
         return
 
-    # === 导入 JSON ===
-    if pending_import:
+    # ==================== 自定义续费日期 ====================
+    if user_state["pending_renew_target"] and is_valid_date(text):
+        name = user_state["pending_renew_target"]
+        from .db import add_target
+        if add_target(name, text):
+            send_msg(f"✅ 「{name}」已续费成功！", generate_inline_buttons())
+            show_targets()
+        else:
+            send_msg("❌ 日期格式错误", generate_inline_buttons())
+        user_state["pending_renew_target"] = None
+        return
+
+    # ==================== 导入 JSON ====================
+    if user_state["pending_import"]:
         try:
             import_data = json.loads(text)
             count = import_targets(import_data)
@@ -206,10 +256,10 @@ def handle_message(update):
             show_targets()
         except Exception as e:
             send_msg(f"❌ JSON 格式错误：{str(e)}", generate_inline_buttons())
-        pending_import = False
+        user_state["pending_import"] = False
         return
 
-    # === 常规命令 ===
+    # ==================== 常规命令 ====================
     if text.startswith("/addsub"):
         parts = text.split(maxsplit=2)
         if len(parts) == 3:
@@ -241,7 +291,7 @@ def handle_message(update):
         send_msg(f"📤 <b>数据已导出</b>\n\n<code>{json_str}</code>", generate_inline_buttons())
 
     elif text.startswith("/import"):
-        pending_import = True
+        user_state["pending_import"] = True
         send_msg("📥 请粘贴 JSON 数据：", generate_inline_buttons())
 
     elif is_valid_push_time(text):
@@ -253,16 +303,12 @@ def handle_message(update):
         show_targets()
 
 # =========================
-# 轮询更新
+# 轮询
 # =========================
 def poll_updates():
     global last_offset
     url = f"{BASE_URL}getUpdates"
-    params = {
-        "timeout": 100,
-        "offset": last_offset,
-        "allowed_updates": ["message", "callback_query"]
-    }
+    params = {"timeout": 100, "offset": last_offset, "allowed_updates": ["message", "callback_query"]}
     try:
         response = requests.get(url, params=params, timeout=110)
         if response.status_code == 200:
@@ -274,15 +320,15 @@ def poll_updates():
                 elif "message" in update:
                     handle_message(update)
     except Exception as e:
-        print("❌ 拉取更新失败:", e)
+        print(f"❌ 拉取更新失败: {e}")
 
 def start_bot():
     global last_offset
-    print("🤖 Telegram Bot 已启动（序号一致性修复版）...")
+    print("🤖 Telegram Bot 已启动（倒计时修复版）...")
     while True:
         try:
             poll_updates()
-            time.sleep(0.3)
+            time.sleep(0.2)
         except Exception as e:
             print(f"Bot 异常: {e}")
             time.sleep(5)
