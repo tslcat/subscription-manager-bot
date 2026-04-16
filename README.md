@@ -4,7 +4,9 @@
 
 ---
 
-[bot截图1](https://cdn.nodeimage.com/i/3awMOuE0JDHHHJDo3vV1WPiVPXpFAgYL.webp)
+
+
+![bot截图1](https://cdn.nodeimage.com/i/3awMOuE0JDHHHJDo3vV1WPiVPXpFAgYL.webp)
 
 ![bot截图2](https://cdn.nodeimage.com/i/5BjW2eML1FhT2WikYLA7zOjYBbTeiNCB.webp)
 
