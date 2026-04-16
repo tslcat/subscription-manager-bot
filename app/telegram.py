@@ -1,236 +1,297 @@
-import sqlite3
+import requests
+import time
 import json
 from datetime import datetime
-from .config import DB_PATH
+from .db import load_targets, update_target, archive_target, load_archives, export_all, import_all
+import os
+
+BOT_TOKEN = os.getenv('TG_BOT_TOKEN')
+TG_USER_ID = os.getenv('TG_USER_ID')
+BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
+
+last_offset = 0
+
+user_state = {
+    "pending_action": None,          # "edit" 或 "archive"
+    "pending_edit_target": None,     # 正在修改的目标原始名称
+    "pending_import": False
+}
 
 # =========================
-# 初始化数据库
+# 辅助函数
 # =========================
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS targets (
-            name TEXT PRIMARY KEY,
-            target_date TEXT NOT NULL
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS archives (
-            name TEXT PRIMARY KEY,
-            target_date TEXT NOT NULL,
-            archived_date TEXT NOT NULL
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-# =========================
-# 添加或更新当前目标
-# =========================
-def add_target(name, date_str):
-    date_str = normalize_date(date_str)
-    if not date_str:
-        return False
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+def is_valid_push_time(time_str):
     try:
-        cursor.execute(
-            "INSERT OR REPLACE INTO targets (name, target_date) VALUES (?, ?)",
-            (name, date_str)
-        )
-        conn.commit()
-        return True
-    except sqlite3.Error:
-        return False
-    finally:
-        conn.close()
-
-# =========================
-# 【新增】修改目标（支持改名 + 改日期）
-# =========================
-def update_target(old_name: str, new_name: str = None, new_date: str = None):
-    """修改名称和/或日期。如果只改其中一项，另一项保持不变"""
-    if new_name is None:
-        new_name = old_name
-    if new_date is None:
-        # 只改名称时也要读取当前日期
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT target_date FROM targets WHERE name = ?", (old_name,))
-        row = cursor.fetchone()
-        conn.close()
-        if not row:
+        if ':' not in time_str:
             return False
-        new_date = row[0]
-    else:
-        new_date = normalize_date(new_date)
-        if not new_date:
-            return False
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    try:
-        # 如果名称发生变化，需要先删除旧记录
-        if new_name != old_name:
-            cursor.execute("DELETE FROM targets WHERE name = ?", (old_name,))
-        
-        cursor.execute(
-            "INSERT OR REPLACE INTO targets (name, target_date) VALUES (?, ?)",
-            (new_name, new_date)
-        )
-        conn.commit()
-        return True
-    except sqlite3.Error:
-        return False
-    finally:
-        conn.close()
-
-# =========================
-# 获取所有当前目标
-# =========================
-def load_targets():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, target_date FROM targets")
-    rows = cursor.fetchall()
-    conn.close()
-
-    targets = {}
-    for name, date_str in rows:
-        try:
-            target_date = datetime.strptime(date_str, "%Y-%m-%d")
-            targets[name] = target_date
-        except:
-            pass
-    return targets
-
-# =========================
-# 归档目标
-# =========================
-def archive_target(name):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT target_date FROM targets WHERE name = ?", (name,))
-        row = cursor.fetchone()
-        if not row:
-            return False
-        
-        date_str = row[0]
-        archived_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        cursor.execute(
-            "INSERT OR REPLACE INTO archives (name, target_date, archived_date) VALUES (?, ?, ?)",
-            (name, date_str, archived_date)
-        )
-        cursor.execute("DELETE FROM targets WHERE name = ?", (name,))
-        conn.commit()
-        return True
-    except sqlite3.Error:
-        return False
-    finally:
-        conn.close()
-
-# =========================
-# 获取所有已归档目标
-# =========================
-def load_archives():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, target_date FROM archives ORDER BY archived_date DESC")
-    rows = cursor.fetchall()
-    conn.close()
-
-    archives = {}
-    for name, date_str in rows:
-        try:
-            target_date = datetime.strptime(date_str, "%Y-%m-%d")
-            archives[name] = target_date
-        except:
-            pass
-    return archives
-
-# =========================
-# 导出/导入全部数据
-# =========================
-def export_all():
-    return {
-        "targets": {name: dt.strftime("%Y-%m-%d") for name, dt in load_targets().items()},
-        "archives": {name: dt.strftime("%Y-%m-%d") for name, dt in load_archives().items()}
-    }
-
-def import_all(data: dict):
-    if not isinstance(data, dict):
-        return 0
-    success = 0
-    
-    if "targets" in data and isinstance(data["targets"], dict):
-        for name, date_str in data["targets"].items():
-            if add_target(name, str(date_str)):
-                success += 1
-    
-    if "archives" in data and isinstance(data["archives"], dict):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        try:
-            for name, date_str in data["archives"].items():
-                date_str = normalize_date(date_str)
-                if date_str:
-                    archived_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    cursor.execute(
-                        "INSERT OR REPLACE INTO archives (name, target_date, archived_date) VALUES (?, ?, ?)",
-                        (name, date_str, archived_date)
-                    )
-                    success += 1
-            conn.commit()
-        finally:
-            conn.close()
-    
-    # 兼容旧版
-    elif not any(k in data for k in ["targets", "archives"]):
-        for name, date_str in data.items():
-            if add_target(name, str(date_str)):
-                success += 1
-    return success
-
-# =========================
-# 设置推送时间
-# =========================
-def set_push_time(time_str):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-        ("push_time", time_str)
-    )
-    conn.commit()
-    conn.close()
-
-def get_push_time():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT value FROM settings WHERE key = 'push_time'")
-    row = cursor.fetchone()
-    conn.close()
-    return row[0] if row else "09:00"
-
-# =========================
-# 日期规范化
-# =========================
-def normalize_date(date_str):
-    try:
-        cleaned = str(date_str).replace('/', '-').replace(' ', '')
-        if len(cleaned) == 8 and cleaned.isdigit():
-            cleaned = f"{cleaned[:4]}-{cleaned[4:6]}-{cleaned[6:]}"
-        dt = datetime.strptime(cleaned, "%Y-%m-%d")
-        return dt.strftime("%Y-%m-%d")
+        h, m = map(int, time_str.split(':'))
+        return 0 <= h < 24 and 0 <= m < 60
     except:
-        return None
+        return False
+
+def is_valid_date(date_str):
+    try:
+        datetime.strptime(date_str.strip(), "%Y-%m-%d")
+        return True
+    except:
+        return False
+
+def send_msg(text, reply_markup=None):
+    url = f"{BASE_URL}sendMessage"
+    payload = {"chat_id": TG_USER_ID, "text": text, "parse_mode": "HTML"}
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
+    try:
+        response = requests.post(url, data=payload, timeout=10)
+        if response.status_code != 200:
+            print(f"❌ 发送失败: {response.text}")
+        else:
+            print("✅ 消息发送成功")
+    except Exception as e:
+        print(f"❌ 发送异常: {e}")
+
+def generate_inline_buttons():
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "✏️ 修改目标", "callback_data": "action_edit"},
+                {"text": "📦 归档目标", "callback_data": "action_archive"},
+            ],
+            [
+                {"text": "🔄 刷新目标", "callback_data": "show_subscriptions"},
+                {"text": "➕ 添加目标", "callback_data": "add_target"},
+            ],
+            [
+                {"text": "📤 导出全部", "callback_data": "export_data"},
+                {"text": "📥 导入全部", "callback_data": "import_data"},
+            ],
+            [
+                {"text": "⏰ 设置推送时间", "callback_data": "set_time"},
+            ]
+        ]
+    }
+    return keyboard
+
+def format_numbered_targets(targets):
+    if not targets:
+        return "📅 当前没有任何目标\n\n<b>共 0 个目标</b>"
+    
+    message = "📅 <b>当前倒计时目标</b>\n\n"
+    sorted_targets = sorted(targets.items(), key=lambda x: x[1])
+    now_date = datetime.now().date()
+    
+    for i, (name, target_time) in enumerate(sorted_targets, 1):
+        target_date = target_time.date()
+        days = (target_date - now_date).days
+        if days < 0:
+            message += f"{i}. {name}: 已结束\n"
+        elif days == 0:
+            message += f"{i}. {name}: <b>今天</b>\n"
+        elif days <= 3:
+            message += f"{i}. {name}: <b>{days}天 (紧急)</b>\n"
+        else:
+            message += f"{i}. {name}: {days}天\n"
+    return message
+
+def show_targets():
+    global user_state
+    user_state = {k: None if k != "pending_import" else False for k in user_state}
+    targets = load_targets()
+    formatted = format_numbered_targets(targets)
+    keyboard = generate_inline_buttons()
+    send_msg(formatted, keyboard)
+
+# =========================
+# 定时推送日报（关键函数）
+# =========================
+def send_daily_report():
+    targets = load_targets()
+    if not targets:
+        send_msg("📅 <b>Daily Subscription Report</b>\n\n当前没有任何目标", generate_inline_buttons())
+        return
+    body = format_numbered_targets(targets).replace("📅 <b>当前倒计时目标</b>\n\n", "")
+    send_msg(f"📅 <b>Daily Subscription Report</b>\n\n{body}", generate_inline_buttons())
+
+def send_daily_report():
+    targets = load_targets()
+    if not targets:
+        send_msg("📅 <b>Daily Subscription Report</b>\n\n当前没有任何目标", generate_inline_buttons())
+        return
+    body = format_numbered_targets(targets).replace("📅 <b>当前倒计时目标</b>\n\n", "")
+    send_msg(f"📅 <b>Daily Subscription Report</b>\n\n{body}", generate_inline_buttons())
+
+# =========================
+# 处理按钮点击
+# =========================
+def handle_callback_query(update):
+    global user_state
+    callback_data = update["callback_query"]["data"]
+    requests.post(f"{BASE_URL}answerCallbackQuery", data={"callback_query_id": update["callback_query"]["id"]})
+    
+    if callback_data == "action_edit":
+        user_state["pending_action"] = "edit"
+        send_msg("✏️ 请输入要<b>修改</b>的目标序号（例如：1）", generate_inline_buttons())
+    
+    elif callback_data == "action_archive":
+        user_state["pending_action"] = "archive"
+        send_msg("📦 请输入要<b>归档</b>的目标序号（输入 <b>0</b> 显示所有历史归档）", generate_inline_buttons())
+    
+    elif callback_data == "show_subscriptions":
+        show_targets()
+    elif callback_data == "add_target":
+        send_msg("请输入：/addsub &lt;名称&gt; &lt;日期&gt;")
+    elif callback_data == "set_time":
+        send_msg("请输入新的推送时间，格式：HH:MM")
+    elif callback_data == "export_data":
+        data = export_all()
+        json_str = json.dumps(data, ensure_ascii=False, indent=2)
+        send_msg(f"📤 <b>完整备份已生成</b>\n\n<code>{json_str}</code>", generate_inline_buttons())
+    elif callback_data == "import_data":
+        user_state["pending_import"] = True
+        send_msg("📥 请直接粘贴你要导入的完整 JSON", generate_inline_buttons())
+
+# =========================
+# 处理用户消息（完整版）
+# =========================
+def handle_message(update):
+    global user_state
+    text = update["message"]["text"].strip()
+
+    if text == "/start":
+        welcome = "👋 <b>Telegram 倒计时机器人</b>\n\n已修复启动问题！\n「修改目标」支持改名称+日期"
+        send_msg(welcome, generate_inline_buttons())
+        return
+
+    # 输入序号
+    if user_state["pending_action"] and text.isdigit():
+        idx = int(text)
+        targets = load_targets()
+        sorted_targets = sorted(targets.items(), key=lambda x: x[1])
+        
+        if idx == 0 and user_state["pending_action"] == "archive":
+            archives = load_archives()
+            if not archives:
+                send_msg("📦 暂无任何已归档目标", generate_inline_buttons())
+            else:
+                msg = "📦 <b>历史已归档目标</b>\n\n"
+                for name, target_date in sorted(archives.items(), key=lambda x: x[1], reverse=True):
+                    msg += f"• {name}：{target_date.strftime('%Y-%m-%d')}\n"
+                send_msg(msg, generate_inline_buttons())
+            user_state["pending_action"] = None
+            return
+
+        if 1 <= idx <= len(sorted_targets):
+            old_name = sorted_targets[idx-1][0]
+            current_date = targets[old_name].strftime("%Y-%m-%d")
+            
+            if user_state["pending_action"] == "edit":
+                user_state["pending_edit_target"] = old_name
+                user_state["pending_action"] = None
+                send_msg(f"✏️ 当前：<b>{old_name}</b>（{current_date}）\n\n请输入：新名称（可选） 新日期（YYYY-MM-DD）\n示例：Netflix家庭 2026-12-20\n或只输日期：2026-12-20", generate_inline_buttons())
+                return
+            elif user_state["pending_action"] == "archive":
+                if archive_target(old_name):
+                    send_msg(f"✅ 已归档 「{old_name}」", generate_inline_buttons())
+                    show_targets()
+                else:
+                    send_msg("❌ 归档失败", generate_inline_buttons())
+                user_state["pending_action"] = None
+                return
+
+    # 修改目标第二步
+    if user_state["pending_edit_target"] and text:
+        old_name = user_state["pending_edit_target"]
+        parts = text.strip().split(maxsplit=1)
+        new_name = None
+        new_date = None
+        if len(parts) == 1:
+            if is_valid_date(parts[0]):
+                new_date = parts[0]
+            else:
+                new_name = parts[0]
+        else:
+            new_name = parts[0]
+            if len(parts) > 1 and is_valid_date(parts[1]):
+                new_date = parts[1]
+        from .db import update_target
+        if update_target(old_name, new_name, new_date):
+            send_msg(f"✅ 修改成功！", generate_inline_buttons())
+            show_targets()
+        else:
+            send_msg("❌ 修改失败", generate_inline_buttons())
+        user_state["pending_edit_target"] = None
+        return
+
+    # 导入
+    if user_state["pending_import"]:
+        try:
+            import_data = json.loads(text)
+            count = import_all(import_data)
+            send_msg(f"✅ 成功导入 {count} 个目标！", generate_inline_buttons())
+            show_targets()
+        except Exception as e:
+            send_msg(f"❌ JSON 格式错误：{str(e)}", generate_inline_buttons())
+        user_state["pending_import"] = False
+        return
+
+    # 常规命令
+    if text.startswith("/addsub"):
+        parts = text.split(maxsplit=2)
+        if len(parts) == 3:
+            _, name, date_str = parts
+            from .db import add_target
+            if add_target(name, date_str):
+                send_msg("✅ 添加成功", generate_inline_buttons())
+                show_targets()
+            else:
+                send_msg("❌ 添加失败")
+        else:
+            send_msg("❌ 格式：/addsub 名称 日期")
+
+    elif text.startswith("/export"):
+        data = export_all()
+        json_str = json.dumps(data, ensure_ascii=False, indent=2)
+        send_msg(f"📤 <b>完整备份</b>\n\n<code>{json_str}</code>", generate_inline_buttons())
+
+    elif text.startswith("/import"):
+        user_state["pending_import"] = True
+        send_msg("📥 请粘贴完整 JSON：", generate_inline_buttons())
+
+    elif is_valid_push_time(text):
+        from .db import set_push_time
+        set_push_time(text)
+        send_msg(f"✅ 推送时间已设置为 <b>{text}</b>", generate_inline_buttons())
+
+    elif text.startswith("/subs") or text == "/列出所有":
+        show_targets()
+
+# =========================
+# 轮询
+# =========================
+def poll_updates():
+    global last_offset
+    url = f"{BASE_URL}getUpdates"
+    params = {"timeout": 100, "offset": last_offset, "allowed_updates": ["message", "callback_query"]}
+    try:
+        response = requests.get(url, params=params, timeout=110)
+        if response.status_code == 200:
+            data = response.json()
+            for update in data.get("result", []):
+                last_offset = update["update_id"] + 1
+                if "callback_query" in update:
+                    handle_callback_query(update)
+                elif "message" in update:
+                    handle_message(update)
+    except Exception as e:
+        print(f"❌ 拉取更新失败: {e}")
+
+def start_bot():
+    global last_offset
+    print("🤖 Telegram Bot 已启动（最新稳定版）...")
+    while True:
+        try:
+            poll_updates()
+            time.sleep(0.2)
+        except Exception as e:
+            print(f"Bot 异常: {e}")
+            time.sleep(5)
