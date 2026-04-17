@@ -76,7 +76,7 @@ def format_numbered_targets(targets):
     if not targets:
         return "📅 当前没有任何目标\n\n<b>共 0 个目标</b>"
     
-    message = "📅 <b>当前倒计时目标</b>\n\n"
+    message = "📅 <b>当前目标</b>\n\n"
     sorted_targets = sorted(targets.items(), key=lambda x: x[1])
     now_date = datetime.now().date()
     
@@ -109,7 +109,7 @@ def send_daily_report():
     if not targets:
         send_msg("📅 <b>Daily Subscription Report</b>\n\n当前没有任何目标", generate_inline_buttons())
         return
-    body = format_numbered_targets(targets).replace("📅 <b>当前倒计时目标</b>\n\n", "")
+    body = format_numbered_targets(targets).replace("📅 <b>当前目标</b>\n\n", "")
     send_msg(f"📅 <b>Daily Subscription Report</b>\n\n{body}", generate_inline_buttons())
 
 def send_daily_report():
@@ -117,7 +117,7 @@ def send_daily_report():
     if not targets:
         send_msg("📅 <b>Daily Subscription Report</b>\n\n当前没有任何目标", generate_inline_buttons())
         return
-    body = format_numbered_targets(targets).replace("📅 <b>当前倒计时目标</b>\n\n", "")
+    body = format_numbered_targets(targets).replace("📅 <b>当前目标</b>\n\n", "")
     send_msg(f"📅 <b>Daily Subscription Report</b>\n\n{body}", generate_inline_buttons())
 
 # =========================
@@ -134,7 +134,7 @@ def handle_callback_query(update):
     
     elif callback_data == "action_archive":
         user_state["pending_action"] = "archive"
-        send_msg("📦 请输入要<b>归档</b>的目标序号（输入 <b>0</b> 显示所有历史归档;输入<b>1、2...</b> 归档目标）", generate_inline_buttons())
+        send_msg("📦 请输入要<b>归档</b>的目标序号（输入 <b>0</b> 查看所有历史归档;输入<b>1或2...</b> 归档目标）", generate_inline_buttons())
     
     elif callback_data == "show_subscriptions":
         show_targets()
@@ -158,7 +158,7 @@ def handle_message(update):
     text = update["message"]["text"].strip()
 
     if text == "/start":
-        welcome = "👋 <b>Telegram 倒计时机器人</b>\n\n已修复启动问题！\n「修改目标」支持改名称+日期"
+        welcome = "👋 <b>Telegram 目标机器人</b>\n\n已修复启动问题！\n「修改目标」支持改名称+日期"
         send_msg(welcome, generate_inline_buttons())
         return
 
