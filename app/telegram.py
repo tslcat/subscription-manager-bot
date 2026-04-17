@@ -73,7 +73,7 @@ def generate_inline_buttons():
     return keyboard
 
 def format_numbered_targets(targets):
-    """最新UI版本（完全按你要求：当前目标无图标、无共XX个目标、即将到期带⏳）"""
+    """最新UI版本（已按你所有要求调整）"""
     if not targets:
         return "📅 当前没有任何目标"
     
@@ -155,7 +155,8 @@ def handle_callback_query(update):
     elif callback_data == "show_subscriptions":
         show_targets()
     elif callback_data == "add_target":
-        send_msg("➕ 请输入：/addsub <名称> <日期>\n示例：/addsub XChat注册 2026-04-25")
+        # 已修复：使用 &lt; &gt; 转义，避免HTML解析错误
+        send_msg("➕ 请输入：/addsub &lt;名称&gt; &lt;日期&gt;\n示例：/addsub XChat注册 2026-04-25", generate_inline_buttons())
     elif callback_data == "set_time":
         send_msg("请输入新的推送时间，格式：HH:MM")
     elif callback_data == "export_data":
@@ -178,7 +179,7 @@ def handle_message(update):
         send_msg(welcome, generate_inline_buttons())
         return
 
-    # ==================== 修改目标 & 归档目标 核心逻辑（已恢复原始流程） ====================
+    # 修改目标 & 归档目标
     if user_state["pending_action"] and text.isdigit():
         idx = int(text)
         targets = load_targets()
@@ -203,7 +204,6 @@ def handle_message(update):
             if user_state["pending_action"] == "edit":
                 user_state["pending_edit_target"] = old_name
                 user_state["pending_action"] = None
-                # 完全恢复原始提示文字
                 send_msg(f"✏️ 当前：<b>{old_name}</b>（{current_date}）\n\n请输入：新名称（可选） 新日期（YYYY-MM-DD）\n示例：Netflix家庭 2026-12-20\n或只输日期：2026-12-20", generate_inline_buttons())
                 return
             elif user_state["pending_action"] == "archive":
@@ -215,7 +215,7 @@ def handle_message(update):
                 user_state["pending_action"] = None
                 return
 
-    # ==================== 修改目标第二步（输入新名称+日期） ====================
+    # 修改目标第二步
     if user_state["pending_edit_target"] and text:
         old_name = user_state["pending_edit_target"]
         parts = text.strip().split(maxsplit=1)
@@ -316,7 +316,7 @@ def poll_updates():
 
 def start_bot():
     global last_offset
-    print("🤖 Telegram Bot 已启动（添加 & 修改目标已完全恢复）...")
+    print("🤖 Telegram Bot 已启动（添加目标错误已修复）...")
     while True:
         try:
             poll_updates()
