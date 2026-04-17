@@ -73,30 +73,27 @@ def generate_inline_buttons():
     return keyboard
 
 def format_numbered_targets(targets):
-    """最新UI版本（完全按你的5点要求调整）"""
+    """最新UI版本（完全按你要求：当前目标无图标、无共XX个目标、即将到期带⏳）"""
     if not targets:
-        return "📅 当前没有任何目标\n\n<b>共 0 个目标</b>"
+        return "📅 当前没有任何目标"
     
-    # 1. 当前目标 视觉居中显示（Telegram不支持完美居中，这里用空格近似居中）
-    message = "                  📅 <b>当前目标</b>\n\n"
+    message = "                  <b>当前目标</b>\n\n"
     
     now_date = datetime.now().date()
     
-    # 分类（名称已修改，图标保持不变）
     categorized = {
         "即将到期": {"emoji": "🚨", "items": []},
-        "中期":      {"emoji": "📊", "items": []},   # 原“进行中”
-        "长期":      {"emoji": "📦", "items": []}    # 原“长期资源”
+        "中期":      {"emoji": "📊", "items": []},
+        "长期":      {"emoji": "📦", "items": []}
     }
     
     items = []
     for name, target_time in targets.items():
         target_date = target_time.date()
         days = (target_date - now_date).days
-        
         if days < 0:
-            continue  # 已过期不显示
-        
+            continue
+            
         if days <= 30:
             category = "即将到期"
         elif days <= 365:
@@ -104,16 +101,10 @@ def format_numbered_targets(targets):
         else:
             category = "长期"
             
-        items.append({
-            "name": name,
-            "days": days,
-            "category": category
-        })
+        items.append({"name": name, "days": days, "category": category})
     
-    # 按剩余天数排序
     items.sort(key=lambda x: x["days"])
     
-    # 组装消息
     idx = 1
     for cat_name, cat_data in categorized.items():
         cat_items = [item for item in items if item["category"] == cat_name]
@@ -124,21 +115,12 @@ def format_numbered_targets(targets):
         
         for item in cat_items:
             days = item["days"]
-            
-            # 2. 即将到期：天数前加 ⏳ 图标（示例：⏳ 6天）
-            if item["category"] == "即将到期":
-                day_str = f"⏳ {days}天"
-            else:
-                day_str = f"{days}天"
-            
-            # 5. 名称和天数之间增加两个空格
+            day_str = f"⏳ {days}天" if item["category"] == "即将到期" else f"{days}天"
             message += f"{idx}. {item['name']}:  <b>{day_str}</b>\n"
             idx += 1
         
         message += "\n"
     
-    total = len(items)
-    message += f"<b>共 {total} 个目标</b>"
     return message
 
 
@@ -150,7 +132,7 @@ def send_daily_report():
     if not targets:
         send_msg("📅 <b>Daily Subscription Report</b>\n\n当前没有任何目标", generate_inline_buttons())
         return
-    body = format_numbered_targets(targets).replace("                  📅 <b>当前目标</b>\n\n", "")
+    body = format_numbered_targets(targets).replace("                  <b>当前目标</b>\n\n", "")
     send_msg(f"📅 <b>Daily Subscription Report</b>\n\n{body}", generate_inline_buttons())
 
 
@@ -173,7 +155,7 @@ def handle_callback_query(update):
     elif callback_data == "show_subscriptions":
         show_targets()
     elif callback_data == "add_target":
-        send_msg("请输入：/addsub <名称> <日期>")
+        send_msg("➕ 请输入：/addsub <名称> <日期>\n示例：/addsub XChat注册 2026-04-25")
     elif callback_data == "set_time":
         send_msg("请输入新的推送时间，格式：HH:MM")
     elif callback_data == "export_data":
@@ -192,11 +174,11 @@ def handle_message(update):
     text = update["message"]["text"].strip()
 
     if text == "/start":
-        welcome = "👋 <b>Telegram 目标机器人</b>\n\n已修复启动问题！\n「修改目标」支持改名称+日期"
+        welcome = "👋 <b>Telegram 目标机器人</b>\n\n添加/修改目标请使用下方按钮"
         send_msg(welcome, generate_inline_buttons())
         return
 
-    # 输入序号
+    # ==================== 修改目标 & 归档目标 核心逻辑（已恢复原始流程） ====================
     if user_state["pending_action"] and text.isdigit():
         idx = int(text)
         targets = load_targets()
@@ -221,6 +203,7 @@ def handle_message(update):
             if user_state["pending_action"] == "edit":
                 user_state["pending_edit_target"] = old_name
                 user_state["pending_action"] = None
+                # 完全恢复原始提示文字
                 send_msg(f"✏️ 当前：<b>{old_name}</b>（{current_date}）\n\n请输入：新名称（可选） 新日期（YYYY-MM-DD）\n示例：Netflix家庭 2026-12-20\n或只输日期：2026-12-20", generate_inline_buttons())
                 return
             elif user_state["pending_action"] == "archive":
@@ -232,7 +215,7 @@ def handle_message(update):
                 user_state["pending_action"] = None
                 return
 
-    # 修改目标第二步
+    # ==================== 修改目标第二步（输入新名称+日期） ====================
     if user_state["pending_edit_target"] and text:
         old_name = user_state["pending_edit_target"]
         parts = text.strip().split(maxsplit=1)
@@ -247,7 +230,6 @@ def handle_message(update):
             new_name = parts[0]
             if len(parts) > 1 and is_valid_date(parts[1]):
                 new_date = parts[1]
-        from .db import update_target
         if update_target(old_name, new_name, new_date):
             send_msg(f"✅ 修改成功！", generate_inline_buttons())
             show_targets()
@@ -268,20 +250,22 @@ def handle_message(update):
         user_state["pending_import"] = False
         return
 
-    # 常规命令
+    # 添加目标
     if text.startswith("/addsub"):
         parts = text.split(maxsplit=2)
         if len(parts) == 3:
             _, name, date_str = parts
             from .db import add_target
             if add_target(name, date_str):
-                send_msg("✅ 添加成功", generate_inline_buttons())
+                send_msg("✅ 添加成功！", generate_inline_buttons())
                 show_targets()
             else:
-                send_msg("❌ 添加失败")
+                send_msg("❌ 添加失败，请检查日期格式（YYYY-MM-DD）")
         else:
-            send_msg("❌ 格式：/addsub 名称 日期")
+            send_msg("❌ 格式错误\n正确示例：/addsub XChat注册 2026-04-25")
+        return
 
+    # 其他命令
     elif text.startswith("/export"):
         data = export_all()
         json_str = json.dumps(data, ensure_ascii=False, indent=2)
@@ -300,7 +284,7 @@ def handle_message(update):
         show_targets()
 
 # =========================
-# 显示当前目标（使用新格式）
+# 显示当前目标
 # =========================
 def show_targets():
     global user_state
@@ -332,7 +316,7 @@ def poll_updates():
 
 def start_bot():
     global last_offset
-    print("🤖 Telegram Bot 已启动（最新稳定版）...")
+    print("🤖 Telegram Bot 已启动（添加 & 修改目标已完全恢复）...")
     while True:
         try:
             poll_updates()
