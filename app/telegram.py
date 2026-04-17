@@ -73,18 +73,20 @@ def generate_inline_buttons():
     return keyboard
 
 def format_numbered_targets(targets):
-    """新的分类展示格式（完全匹配你截图样式）"""
+    """最新UI版本（完全按你的5点要求调整）"""
     if not targets:
         return "📅 当前没有任何目标\n\n<b>共 0 个目标</b>"
     
-    message = "📅 <b>当前目标</b>\n\n"
+    # 1. 当前目标 视觉居中显示（Telegram不支持完美居中，这里用空格近似居中）
+    message = "                  📅 <b>当前目标</b>\n\n"
+    
     now_date = datetime.now().date()
     
-    # 分类
+    # 分类（名称已修改，图标保持不变）
     categorized = {
         "即将到期": {"emoji": "🚨", "items": []},
-        "进行中": {"emoji": "📊", "items": []},
-        "长期资源": {"emoji": "📦", "items": []}
+        "中期":      {"emoji": "📊", "items": []},   # 原“进行中”
+        "长期":      {"emoji": "📦", "items": []}    # 原“长期资源”
     }
     
     items = []
@@ -93,14 +95,14 @@ def format_numbered_targets(targets):
         days = (target_date - now_date).days
         
         if days < 0:
-            continue  # 已过期的目标不显示在当前列表
+            continue  # 已过期不显示
         
         if days <= 30:
             category = "即将到期"
         elif days <= 365:
-            category = "进行中"
+            category = "中期"
         else:
-            category = "长期资源"
+            category = "长期"
             
         items.append({
             "name": name,
@@ -108,7 +110,7 @@ def format_numbered_targets(targets):
             "category": category
         })
     
-    # 按剩余天数排序（最早到期的排最前）
+    # 按剩余天数排序
     items.sort(key=lambda x: x["days"])
     
     # 组装消息
@@ -122,15 +124,15 @@ def format_numbered_targets(targets):
         
         for item in cat_items:
             days = item["days"]
-            # 紧急图标（和截图一致）
-            if days <= 7:
-                extra = " ⏳"
-            elif days <= 30:
-                extra = " ⚠️"
+            
+            # 2. 即将到期：天数前加 ⏳ 图标（示例：⏳ 6天）
+            if item["category"] == "即将到期":
+                day_str = f"⏳ {days}天"
             else:
-                extra = ""
-                
-            message += f"{idx}. {item['name']}: <b>{days}天{extra}</b>\n"
+                day_str = f"{days}天"
+            
+            # 5. 名称和天数之间增加两个空格
+            message += f"{idx}. {item['name']}:  <b>{day_str}</b>\n"
             idx += 1
         
         message += "\n"
@@ -148,7 +150,7 @@ def send_daily_report():
     if not targets:
         send_msg("📅 <b>Daily Subscription Report</b>\n\n当前没有任何目标", generate_inline_buttons())
         return
-    body = format_numbered_targets(targets).replace("📅 <b>当前目标</b>\n\n", "")
+    body = format_numbered_targets(targets).replace("                  📅 <b>当前目标</b>\n\n", "")
     send_msg(f"📅 <b>Daily Subscription Report</b>\n\n{body}", generate_inline_buttons())
 
 
