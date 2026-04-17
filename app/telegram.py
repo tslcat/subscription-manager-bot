@@ -73,36 +73,75 @@ def generate_inline_buttons():
     return keyboard
 
 def format_numbered_targets(targets):
+    """新的分类展示格式（完全匹配你截图样式）"""
     if not targets:
         return "📅 当前没有任何目标\n\n<b>共 0 个目标</b>"
     
     message = "📅 <b>当前目标</b>\n\n"
-    sorted_targets = sorted(targets.items(), key=lambda x: x[1])
     now_date = datetime.now().date()
     
-    for i, (name, target_time) in enumerate(sorted_targets, 1):
+    # 分类
+    categorized = {
+        "即将到期": {"emoji": "🚨", "items": []},
+        "进行中": {"emoji": "📊", "items": []},
+        "长期资源": {"emoji": "📦", "items": []}
+    }
+    
+    items = []
+    for name, target_time in targets.items():
         target_date = target_time.date()
         days = (target_date - now_date).days
+        
         if days < 0:
-            message += f"{i}. {name}: 已结束\n"
-        elif days == 0:
-            message += f"{i}. {name}: <b>今天</b>\n"
-        elif days <= 3:
-            message += f"{i}. {name}: <b>{days}天 (紧急)</b>\n"
+            continue  # 已过期的目标不显示在当前列表
+        
+        if days <= 30:
+            category = "即将到期"
+        elif days <= 365:
+            category = "进行中"
         else:
-            message += f"{i}. {name}: {days}天\n"
+            category = "长期资源"
+            
+        items.append({
+            "name": name,
+            "days": days,
+            "category": category
+        })
+    
+    # 按剩余天数排序（最早到期的排最前）
+    items.sort(key=lambda x: x["days"])
+    
+    # 组装消息
+    idx = 1
+    for cat_name, cat_data in categorized.items():
+        cat_items = [item for item in items if item["category"] == cat_name]
+        if not cat_items:
+            continue
+            
+        message += f"{cat_data['emoji']} <b>{cat_name}</b>\n\n"
+        
+        for item in cat_items:
+            days = item["days"]
+            # 紧急图标（和截图一致）
+            if days <= 7:
+                extra = " ⏳"
+            elif days <= 30:
+                extra = " ⚠️"
+            else:
+                extra = ""
+                
+            message += f"{idx}. {item['name']}: <b>{days}天{extra}</b>\n"
+            idx += 1
+        
+        message += "\n"
+    
+    total = len(items)
+    message += f"<b>共 {total} 个目标</b>"
     return message
 
-def show_targets():
-    global user_state
-    user_state = {k: None if k != "pending_import" else False for k in user_state}
-    targets = load_targets()
-    formatted = format_numbered_targets(targets)
-    keyboard = generate_inline_buttons()
-    send_msg(formatted, keyboard)
 
 # =========================
-# 定时推送日报（关键函数）
+# 定时推送日报
 # =========================
 def send_daily_report():
     targets = load_targets()
@@ -112,13 +151,6 @@ def send_daily_report():
     body = format_numbered_targets(targets).replace("📅 <b>当前目标</b>\n\n", "")
     send_msg(f"📅 <b>Daily Subscription Report</b>\n\n{body}", generate_inline_buttons())
 
-def send_daily_report():
-    targets = load_targets()
-    if not targets:
-        send_msg("📅 <b>Daily Subscription Report</b>\n\n当前没有任何目标", generate_inline_buttons())
-        return
-    body = format_numbered_targets(targets).replace("📅 <b>当前目标</b>\n\n", "")
-    send_msg(f"📅 <b>Daily Subscription Report</b>\n\n{body}", generate_inline_buttons())
 
 # =========================
 # 处理按钮点击
@@ -139,7 +171,7 @@ def handle_callback_query(update):
     elif callback_data == "show_subscriptions":
         show_targets()
     elif callback_data == "add_target":
-        send_msg("请输入：/addsub &lt;名称&gt; &lt;日期&gt;")
+        send_msg("请输入：/addsub <名称> <日期>")
     elif callback_data == "set_time":
         send_msg("请输入新的推送时间，格式：HH:MM")
     elif callback_data == "export_data":
@@ -151,7 +183,7 @@ def handle_callback_query(update):
         send_msg("📥 请直接粘贴你要导入的完整 JSON", generate_inline_buttons())
 
 # =========================
-# 处理用户消息（完整版）
+# 处理用户消息
 # =========================
 def handle_message(update):
     global user_state
@@ -264,6 +296,17 @@ def handle_message(update):
 
     elif text.startswith("/subs") or text == "/列出所有":
         show_targets()
+
+# =========================
+# 显示当前目标（使用新格式）
+# =========================
+def show_targets():
+    global user_state
+    user_state = {k: None if k != "pending_import" else False for k in user_state}
+    targets = load_targets()
+    formatted = format_numbered_targets(targets)
+    keyboard = generate_inline_buttons()
+    send_msg(formatted, keyboard)
 
 # =========================
 # 轮询
