@@ -6,9 +6,9 @@
 
 
 
-![bot截图1](https://cdn.nodeimage.com/i/3awMOuE0JDHHHJDo3vV1WPiVPXpFAgYL.webp)
-
-![bot截图2](https://cdn.nodeimage.com/i/5BjW2eML1FhT2WikYLA7zOjYBbTeiNCB.webp)
+![bot截图1](https://cdn.nodeimage.com/i/Ah2kG3GR723QV5J76NVU9Nrs4e43aQYF.webp)
+![bot截图2](https://cdn.nodeimage.com/i/Y22YGeGuM5myxjJsAqPYN6bEI9aJKQz3.webp)
+![bot截图3](https://cdn.nodeimage.com/i/pX5V0Zyj1kV6cvNguirwgqUv0oSlsMV7.webp)
 
 ## ✨ 功能特点
 
