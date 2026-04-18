@@ -73,7 +73,7 @@ def generate_inline_buttons():
     return keyboard
 
 def format_numbered_targets(targets):
-    """最新UI版本（已按你所有要求调整）"""
+    """最新UI版本（逾期图标已改为 ⚠️）"""
     if not targets:
         return "📅 当前没有任何目标"
     
@@ -81,7 +81,9 @@ def format_numbered_targets(targets):
     
     now_date = datetime.now().date()
     
+    # 逾期图标已改为 ⚠️
     categorized = {
+        "逾期":      {"emoji": "⚠️", "items": []},
         "即将到期": {"emoji": "🚨", "items": []},
         "中期":      {"emoji": "📊", "items": []},
         "长期":      {"emoji": "📦", "items": []}
@@ -91,10 +93,10 @@ def format_numbered_targets(targets):
     for name, target_time in targets.items():
         target_date = target_time.date()
         days = (target_date - now_date).days
+        
         if days < 0:
-            continue
-            
-        if days <= 30:
+            category = "逾期"
+        elif days <= 30:
             category = "即将到期"
         elif days <= 365:
             category = "中期"
@@ -115,7 +117,14 @@ def format_numbered_targets(targets):
         
         for item in cat_items:
             days = item["days"]
-            day_str = f"⏳ {days}天" if item["category"] == "即将到期" else f"{days}天"
+            
+            if item["category"] == "逾期":
+                day_str = "逾期"
+            elif item["category"] == "即将到期":
+                day_str = f"⏳ {days}天"
+            else:
+                day_str = f"{days}天"
+            
             message += f"{idx}. {item['name']}:  <b>{day_str}</b>\n"
             idx += 1
         
@@ -155,7 +164,6 @@ def handle_callback_query(update):
     elif callback_data == "show_subscriptions":
         show_targets()
     elif callback_data == "add_target":
-        # 已修复：使用 &lt; &gt; 转义，避免HTML解析错误
         send_msg("➕ 请输入：/addsub &lt;名称&gt; &lt;日期&gt;\n示例：/addsub XChat注册 2026-04-25", generate_inline_buttons())
     elif callback_data == "set_time":
         send_msg("请输入新的推送时间，格式：HH:MM")
@@ -179,7 +187,6 @@ def handle_message(update):
         send_msg(welcome, generate_inline_buttons())
         return
 
-    # 修改目标 & 归档目标
     if user_state["pending_action"] and text.isdigit():
         idx = int(text)
         targets = load_targets()
@@ -215,7 +222,6 @@ def handle_message(update):
                 user_state["pending_action"] = None
                 return
 
-    # 修改目标第二步
     if user_state["pending_edit_target"] and text:
         old_name = user_state["pending_edit_target"]
         parts = text.strip().split(maxsplit=1)
@@ -238,7 +244,6 @@ def handle_message(update):
         user_state["pending_edit_target"] = None
         return
 
-    # 导入
     if user_state["pending_import"]:
         try:
             import_data = json.loads(text)
@@ -250,7 +255,6 @@ def handle_message(update):
         user_state["pending_import"] = False
         return
 
-    # 添加目标
     if text.startswith("/addsub"):
         parts = text.split(maxsplit=2)
         if len(parts) == 3:
@@ -265,7 +269,6 @@ def handle_message(update):
             send_msg("❌ 格式错误\n正确示例：/addsub XChat注册 2026-04-25")
         return
 
-    # 其他命令
     elif text.startswith("/export"):
         data = export_all()
         json_str = json.dumps(data, ensure_ascii=False, indent=2)
@@ -316,7 +319,7 @@ def poll_updates():
 
 def start_bot():
     global last_offset
-    print("🤖 Telegram Bot 已启动（添加目标错误已修复）...")
+    print("🤖 Telegram Bot 已启动（逾期图标已改为 ⚠️）...")
     while True:
         try:
             poll_updates()
