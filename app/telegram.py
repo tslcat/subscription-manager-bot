@@ -17,7 +17,7 @@ user_state = {
     "pending_import": False
 }
 
-# ====================== 多语言翻译字典 ======================
+# ====================== 多语言字典 ======================
 TRANSLATIONS = {
     "no_targets": {"en": "No targets currently", "zh": "当前没有任何目标"},
     "current_targets_title": {"en": "Current Targets", "zh": "当前目标"},
@@ -58,11 +58,25 @@ TRANSLATIONS = {
     "import_success": {"en": "✅ Successfully imported {count} targets!", "zh": "✅ 成功导入 {count} 个目标！"},
     "json_error": {"en": "❌ JSON format error: {error}", "zh": "❌ JSON 格式错误：{error}"},
     "daily_report_title": {"en": "Daily Report", "zh": "每日报告"},
-    "daily_report_no_targets": {"en": "No targets currently", "zh": "当前没有任何目标"},
 }
 
+def send_msg(text, reply_markup=None):
+    """发送消息（核心函数，已置于最上方）"""
+    url = f"{BASE_URL}sendMessage"
+    payload = {"chat_id": TG_USER_ID, "text": text, "parse_mode": "HTML"}
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
+    try:
+        response = requests.post(url, data=payload, timeout=10)
+        if response.status_code != 200:
+            print(f"❌ Send failed: {response.text}")
+        else:
+            print("✅ Message sent successfully")
+    except Exception as e:
+        print(f"❌ Send error: {e}")
+
 def get_user_lang(update):
-    """自动获取用户 Telegram 语言设置"""
+    """自动获取用户 Telegram 语言"""
     if "message" in update and "from" in update["message"]:
         lang = update["message"]["from"].get("language_code", "en")
     elif "callback_query" in update and "from" in update["callback_query"]:
@@ -72,7 +86,6 @@ def get_user_lang(update):
     return "zh" if lang.startswith("zh") else "en"
 
 def get_text(key, lang="en", **kwargs):
-    """获取对应语言的文本，支持格式化"""
     lang = "zh" if lang.startswith("zh") else "en"
     text = TRANSLATIONS.get(key, {}).get(lang, TRANSLATIONS.get(key, {}).get("en", key))
     if kwargs:
@@ -150,23 +163,15 @@ def format_numbered_targets(targets, lang="en"):
         message += "\n"
     return message
 
-
-# =========================
-# 定时推送日报（使用默认语言，可自行修改默认值）
-# =========================
 def send_daily_report():
     targets = load_targets()
-    lang = "zh"  # 这里默认中文，你可以改成 "en"
+    lang = "zh"   # 你可以改成 "en" 作为默认
     if not targets:
-        send_msg(get_text("daily_report_title", lang) + "\n\n" + get_text("daily_report_no_targets", lang), generate_inline_buttons(lang))
+        send_msg(get_text("daily_report_title", lang) + "\n\n" + get_text("no_targets", lang), generate_inline_buttons(lang))
         return
     body = format_numbered_targets(targets, lang).replace(f"                  <b>{get_text('current_targets_title', lang)}</b>\n\n", "")
     send_msg(f"📅 <b>{get_text('daily_report_title', lang)}</b>\n\n{body}", generate_inline_buttons(lang))
 
-
-# =========================
-# 按钮处理
-# =========================
 def handle_callback_query(update):
     global user_state
     lang = get_user_lang(update)
@@ -193,10 +198,6 @@ def handle_callback_query(update):
         user_state["pending_import"] = True
         send_msg(get_text("import_prompt", lang), generate_inline_buttons(lang))
 
-
-# =========================
-# 用户消息处理
-# =========================
 def handle_message(update):
     global user_state
     lang = get_user_lang(update)
@@ -207,7 +208,6 @@ def handle_message(update):
         return
 
     if user_state["pending_action"] and text.isdigit():
-        # ...（序号处理逻辑保持不变，仅提示文字使用 get_text）
         idx = int(text)
         targets = load_targets()
         sorted_targets = sorted(targets.items(), key=lambda x: x[1])
@@ -242,9 +242,7 @@ def handle_message(update):
                 user_state["pending_action"] = None
                 return
 
-    # 修改目标第二步
     if user_state["pending_edit_target"] and text:
-        # ...（逻辑不变）
         old_name = user_state["pending_edit_target"]
         parts = text.strip().split(maxsplit=1)
         new_name = None
@@ -266,7 +264,6 @@ def handle_message(update):
         user_state["pending_edit_target"] = None
         return
 
-    # 导入
     if user_state["pending_import"]:
         try:
             import_data = json.loads(text)
@@ -278,7 +275,6 @@ def handle_message(update):
         user_state["pending_import"] = False
         return
 
-    # 添加目标
     if text.startswith("/addsub"):
         parts = text.split(maxsplit=2)
         if len(parts) == 3:
@@ -293,7 +289,6 @@ def handle_message(update):
             send_msg(get_text("format_error", lang), generate_inline_buttons(lang))
         return
 
-    # 其他命令（保持不变）
     elif text.startswith("/export"):
         data = export_all()
         json_str = json.dumps(data, ensure_ascii=False, indent=2)
@@ -320,9 +315,6 @@ def show_targets(update):
     keyboard = generate_inline_buttons(lang)
     send_msg(formatted, keyboard)
 
-# =========================
-# 轮询 & 启动
-# =========================
 def poll_updates():
     global last_offset
     url = f"{BASE_URL}getUpdates"
@@ -350,3 +342,9 @@ def start_bot():
         except Exception as e:
             print(f"Bot error: {e}")
             time.sleep(5)
+
+# =========================
+# 启动入口（保持不变）
+# =========================
+if __name__ == "__main__":
+    start_bot()
