@@ -2,7 +2,7 @@ import requests
 import time
 import json
 from datetime import datetime
-from .db import load_targets, update_target, archive_target, load_archives, export_all, import_all
+from .db import load_targets, update_target, archive_target, load_archives, export_all, import_all, normalize_date
 import os
 
 BOT_TOKEN = os.getenv('TG_BOT_TOKEN')
@@ -31,11 +31,11 @@ TRANSLATIONS = {
 
     "edit_button": {"en": "✏️ Edit Target", "zh": "✏️ 修改目标"},
     "archive_button": {"en": "📦 Archive Target", "zh": "📦 归档目标"},
-    "refresh_button": {"en": "🔄 Refresh Targets", "zh": "🔄 刷新目标"},
+    "refresh_button": {"en": "🔄 View All Targets", "zh": "🔄 查看所有目标"},
     "add_button": {"en": "➕ Add Target", "zh": "➕ 添加目标"},
     "export_button": {"en": "📤 Export All", "zh": "📤 导出全部"},
     "import_button": {"en": "📥 Import All", "zh": "📥 导入全部"},
-    "set_time_button": {"en": "⏰ Set Push Time", "zh": "⏰ 设置推送时间"},
+    "set_time_button": {"en": "⏰ Set Daily Push Time", "zh": "⏰ 设置每天推送时间"},
 
     "edit_prompt": {"en": "✏️ Please enter the <b>number</b> of the target to edit (e.g. 1 or 2...)", "zh": "✏️ 请输入要<b>修改</b>的目标序号（例如：1或2...）"},
     "archive_prompt": {"en": "📦 Please enter the <b>number</b> of the target to archive (enter <b>0</b> to view all archived; enter <b>1 or 2...</b> to archive)", "zh": "📦 请输入要<b>归档</b>的目标序号（输入 <b>0</b> 查看所有历史归档;输入<b>1或2...</b> 归档目标）"},
@@ -172,11 +172,37 @@ def send_daily_report():
     body = format_numbered_targets(targets, lang).replace(f"                  <b>{get_text('current_targets_title', lang)}</b>\n\n", "")
     send_msg(f"📅 <b>{get_text('daily_report_title', lang)}</b>\n\n{body}", generate_inline_buttons(lang))
 
+
+def is_valid_date(date_str: str) -> bool:
+    """检查日期字符串是否为有效 YYYY-MM-DD 格式"""
+    if not date_str or not isinstance(date_str, str):
+        return False
+    return normalize_date(date_str) is not None
+
+
+def is_valid_push_time(text: str) -> bool:
+    """检查推送时间是否为有效 HH:MM 格式 (0-23:0-59)"""
+    if not text or not isinstance(text, str):
+        return False
+    text = text.strip()
+    if ":" not in text:
+        return False
+    try:
+        parts = text.split(":")
+        if len(parts) != 2:
+            return False
+        h = int(parts[0])
+        m = int(parts[1])
+        return 0 <= h <= 23 and 0 <= m <= 59
+    except (ValueError, TypeError):
+        return False
+
+
 def handle_callback_query(update):
     global user_state
     lang = get_user_lang(update)
     callback_data = update["callback_query"]["data"]
-    requests.post(f"{BASE_URL}answerCallbackQuery", data={"callback_query_id": update["callback_query"]["id"]})
+    requests.post(f"{BASE_URL}answerCallbackQuery", data={"callback_query_id": update["callback_query"]["id"]}")
     
     if callback_data == "action_edit":
         user_state["pending_action"] = "edit"
