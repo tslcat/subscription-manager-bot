@@ -35,7 +35,7 @@ TRANSLATIONS = {
     "add_button": {"en": "➕ Add Target", "zh": "➕ 添加目标"},
     "export_button": {"en": "📤 Export All", "zh": "📤 导出全部"},
     "import_button": {"en": "📥 Import All", "zh": "📥 导入全部"},
-    "set_time_button": {"en": "⏰ Set Daily Push Time", "zh": "⏰ 设置每天推送时间"},
+    "set_time_button": {"en": "⏰ Set Daily Push Time", "zh": "⏰ 设置每日推送时间"},
 
     "edit_prompt": {"en": "✏️ Please enter the <b>number</b> of the target to edit (e.g. 1 or 2...)", "zh": "✏️ 请输入要<b>修改</b>的目标序号（例如：1或2...）"},
     "archive_prompt": {"en": "📦 Please enter the <b>number</b> of the target to archive (enter <b>0</b> to view all archived; enter <b>1 or 2...</b> to archive)", "zh": "📦 请输入要<b>归档</b>的目标序号（输入 <b>0</b> 查看所有历史归档;输入<b>1或2...</b> 归档目标）"},
@@ -202,7 +202,7 @@ def handle_callback_query(update):
     global user_state
     lang = get_user_lang(update)
     callback_data = update["callback_query"]["data"]
-    requests.post(f"{BASE_URL}answerCallbackQuery", data={"callback_query_id": update["callback_query"]["id"]}")
+    requests.post(f"{BASE_URL}answerCallbackQuery", data={"callback_query_id": update["callback_query"]["id"]})
     
     if callback_data == "action_edit":
         user_state["pending_action"] = "edit"
