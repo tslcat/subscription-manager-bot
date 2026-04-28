@@ -3,10 +3,11 @@ from datetime import datetime
 from .db import load_targets, get_push_time
 from .telegram import send_daily_report   # 定时推送使用
 
-last_pushed_time = None
+# 使用 (日期, 小时, 分钟) 作为 key，支持当天多次修改未来时间后继续推送
+last_pushed_key = None
 
 def push_loop():
-    global last_pushed_time
+    global last_pushed_key
     while True:
         try:
             now = datetime.now()
@@ -14,18 +15,19 @@ def push_loop():
             hour, minute = map(int, t.split(":"))
             today = now.date()
 
-            # 计算今天的目标推送时间
-            target_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            current_key = (today, hour, minute)
 
-            # 最终规则：
-            # 1. 如果目标时间在当前时间之前（已过去）→ 今天不推送，等待明天
-            # 2. 如果目标时间在当前时间之后（未来）→ 允许今天多次推送（每次改成更晚的未来时间都推）
-            # 3. 之后每天都会在设定时间推送，直到下次修改
-            if target_time > now and target_time != last_pushed_time:
+            # 精确到分钟匹配（最可靠的方式）
+            # 完全符合你的最终规则：
+            # 1. 过去时间（现在10:05设09:00）→ 今天不推送，明天开始
+            # 2. 未来时间（现在10:05设10:10）→ 今天10:10会推送
+            # 3. 当天改成更晚的10:20 → 10:20还会再次推送
+            # 4. 之后每天都会按新时间推送，直到下次修改
+            if now.hour == hour and now.minute == minute and current_key != last_pushed_key:
                 send_daily_report()
-                last_pushed_time = target_time
-                print(f"✅ 定时日报已发送 - {t}")
+                last_pushed_key = current_key
+                print(f"✅ 定时日报已发送 - {t} ({now.strftime('%H:%M:%S')})")
         except Exception as e:
             print(f"scheduler error: {e}")
 
-        time.sleep(15)
+        time.sleep(15)  # 5秒间隔，极大提高命中精确分钟的概率

@@ -327,7 +327,8 @@ def handle_message(update):
     elif is_valid_push_time(text):
         from .db import set_push_time
         set_push_time(text)
-        send_msg(get_text("push_time_set", lang, time=text), generate_inline_buttons(lang))
+        send_msg(get_text("push_time_set", lang, time=text))
+        return
 
     elif text.startswith("/subs") or text.lower() == "/list all":
         show_targets(update)
