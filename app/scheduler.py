@@ -3,10 +3,10 @@ from datetime import datetime
 from .db import load_targets, get_push_time
 from .telegram import send_daily_report   # 定时推送使用
 
-last_sent_date = None
+last_pushed_time = None
 
 def push_loop():
-    global last_sent_date
+    global last_pushed_time
     while True:
         try:
             now = datetime.now()
@@ -14,13 +14,16 @@ def push_loop():
             hour, minute = map(int, t.split(":"))
             today = now.date()
 
-            # 严格模式：只有在精确的 HH:MM 分钟到达时才推送
-            # 如果设定的时间已经过去（比如现在10:05设09:00），今天不会推送
-            # 如果设定的时间是未来的（比如现在10:05设10:10），今天10:10会推送
-            # 之后每天都会在设定时间推送，直到下次修改
-            if now.hour == hour and now.minute == minute and last_sent_date != today:
+            # 计算今天的目标推送时间
+            target_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+            # 最终规则：
+            # 1. 如果目标时间在当前时间之前（已过去）→ 今天不推送，等待明天
+            # 2. 如果目标时间在当前时间之后（未来）→ 允许今天多次推送（每次改成更晚的未来时间都推）
+            # 3. 之后每天都会在设定时间推送，直到下次修改
+            if target_time > now and target_time != last_pushed_time:
                 send_daily_report()
-                last_sent_date = today
+                last_pushed_time = target_time
                 print(f"✅ 定时日报已发送 - {t}")
         except Exception as e:
             print(f"scheduler error: {e}")
